@@ -63,6 +63,19 @@ export default function Shell({ title, children }) {
             )
           })}
         </nav>
+        {/* Chỉ hiện trên điện thoại: các nút không còn chỗ trên thanh trên cùng */}
+        <div className="sidebar-foot">
+          <div className="sidebar-user">
+            <span className="avatar">{initialsOf(user.full_name)}</span>
+            <span className="who"><span className="strong">{user.full_name}</span><span className="muted small">{ROLE_VI[user.role]}</span></span>
+          </div>
+          <div className="sidebar-tools">
+            <LangToggle />
+            <ThemeToggle />
+            <span className="spacer" />
+            <button className="btn danger sm" onClick={logout}><Icon name="logout" />{t('Đăng xuất')}</button>
+          </div>
+        </div>
       </aside>
       {open && <div className="sidebar-backdrop" style={{ display: 'block' }} onClick={() => setOpen(false)} />}
       <div className="main">
@@ -78,7 +91,7 @@ export default function Shell({ title, children }) {
             <span className="avatar">{initialsOf(user.full_name)}</span>
             <span className="who"><span className="strong">{user.full_name}</span><br /><span className="muted small">{ROLE_VI[user.role]}</span></span>
           </div>
-          <button className="btn ghost icon-only" title={t('Đăng xuất')} aria-label={t('Đăng xuất')} onClick={logout}><Icon name="logout" /></button>
+          <button className="btn ghost icon-only logout-btn" title={t('Đăng xuất')} aria-label={t('Đăng xuất')} onClick={logout}><Icon name="logout" /></button>
         </header>
         <main id="page">{children}</main>
         {user.role !== 'admin' && <AIFab pageTitle={title} />}

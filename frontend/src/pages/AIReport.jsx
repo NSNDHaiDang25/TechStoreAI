@@ -32,7 +32,7 @@ export default function AIReport() {
   // FR-AIR-06: xuất báo cáo đang xem ra PDF
   const downloadPdf = async () => {
     try {
-      const resp = await fetch('/api/ai/report/pdf', {
+      const resp = await fetch(apiUrl('/api/ai/report/pdf'), {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({ markdown: res.markdown, date_from: res.period.from, date_to: res.period.to }),
       })

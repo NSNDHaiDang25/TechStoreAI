@@ -10,6 +10,9 @@ load_dotenv(BASE_DIR / ".env")
 class Settings:
     SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-change-me-please-use-a-long-random-string")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
+    # Giao diện đặt ở tên miền khác (GitHub Pages) được phép gọi API, cách nhau bởi dấu phẩy.
+    # Ví dụ: https://nsndhaidang25.github.io. Để trống = chỉ giao diện do chính backend phục vụ.
+    CORS_ORIGINS: list[str] = [o.strip().rstrip("/") for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'data' / 'sales.db'}")
 
     # Bỏ cả dấu ngoặc kép / đơn: dán key kèm ngoặc vào Environment trên Render là lỗi hay gặp (Google trả 401)

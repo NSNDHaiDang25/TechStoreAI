@@ -2,6 +2,13 @@ import { lang, t } from './i18n.js'
 // Gọi API backend. Token lưu trong localStorage (hoặc sessionStorage khi không chọn "Ghi nhớ đăng nhập").
 const KEY = 'token'
 
+// Địa chỉ backend. Trống = cùng tên miền với giao diện (FastAPI phục vụ bản build).
+// Bản GitHub Pages build với VITE_API_URL=https://<app>.onrender.com để gọi API ở Render.
+export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
+
+// Đường dẫn do backend trả về (/static/img/..., /uploads/...) đổi thành địa chỉ đầy đủ của backend
+export const apiUrl = (path) => (path && path.startsWith('/') ? API_BASE + path : path)
+
 export function getToken() {
   try { return localStorage.getItem(KEY) || sessionStorage.getItem(KEY) } catch { return null }
 }
@@ -32,7 +39,7 @@ function errorMessage(data, status) {
 }
 
 async function request(method, path, { params, body, form, raw } = {}) {
-  let url = '/api' + path
+  let url = API_BASE + '/api' + path
   if (params) {
     const q = new URLSearchParams()
     Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.append(k, v) })

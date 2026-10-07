@@ -3,6 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -59,6 +60,11 @@ async def remember_client_ip(request: Request, call_next):
         client_ip.reset(token)
         reply_lang.reset(lang_token)
 
+
+if settings.CORS_ORIGINS:
+    # Giao diện trên GitHub Pages gọi API ở Render. Token gửi qua header Authorization nên không cần cookie.
+    app.add_middleware(CORSMiddleware, allow_origins=settings.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
+                       expose_headers=["Content-Disposition"])
 
 errors.install(app)  # cấu trúc lỗi chung {"error": {"code", "message", "details"}} theo SRS 8.4.1
 

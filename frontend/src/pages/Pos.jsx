@@ -222,6 +222,17 @@ export default function Pos() {
   const [restored, setRestored] = useState(!draftId)  // giỏ nháp đã khôi phục xong (hoặc không có)
   const location = useLocation()
   const navigate = useNavigate()
+  const cartRef = useRef(null)
+  const [cartInView, setCartInView] = useState(false)
+
+  // Điện thoại: giỏ hàng nằm dưới danh sách sản phẩm, hiện thanh tổng tiền dính đáy khi giỏ chưa lọt vào màn hình
+  useEffect(() => {
+    const el = cartRef.current
+    if (!el || !('IntersectionObserver' in window)) return undefined
+    const io = new IntersectionObserver(([e]) => setCartInView(e.isIntersecting), { threshold: 0.15 })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
 
   const loadProducts = useCallback(() => {
     api.get('/products', { q: search, category_id: cat, status: 'active', size: 60 }).then((r) => setProducts(r.items)).catch(() => {})
@@ -362,7 +373,7 @@ export default function Pos() {
     Math.ceil(cart.total / 500000) * 500000])].slice(0, 4) : []
 
   return (
-    <div className="pos">
+    <div className={`pos ${lines.length ? 'has-cartbar' : ''}`}>
       <section className="pos-products card">
         <div className="toolbar">
           <div className="grow input-icon"><Icon name="scan" />
@@ -390,7 +401,7 @@ export default function Pos() {
         </div>
       </section>
 
-      <section className="cart card">
+      <section className="cart card" ref={cartRef}>
         <div className="card-head"><h2><Icon name="cart" />{t('Giỏ hàng')} {draftId ? <span className="badge">{t('Nháp đã lưu')}</span> : null}</h2>
           {lines.length > 0 && <button className="btn ghost sm" onClick={reset}><Icon name="trash" />{t('Xóa giỏ')}</button>}
         </div>
@@ -473,6 +484,16 @@ export default function Pos() {
           </button>
         </>}
       </section>
+
+      {lines.length > 0 && (
+        <button type="button" className="pos-cartbar" hidden={cartInView}
+          onClick={() => cartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <span className="cb-icon"><Icon name="cart" /><span className="cb-count">{lines.reduce((a, l) => a + l.quantity, 0)}</span></span>
+          <span className="cb-text"><span className="small">{t('Khách phải trả')}</span>
+            <span className="cb-total">{money(cart ? cart.total : lines.reduce((a, l) => a + l.product.sale_price * l.quantity, 0))}</span></span>
+          <span className="cb-go"><span>{t('Thanh toán')}</span><Icon name="chevron" /></span>
+        </button>
+      )}
 
       {picker && <SerialPicker product={picker} taken={taken} onClose={() => setPicker(null)}
         onPick={(s) => { addProduct(picker, s); setPicker(null) }} />}
