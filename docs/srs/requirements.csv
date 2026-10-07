@@ -1,0 +1,209 @@
+id,priority,use_case,srs_test_cases,description
+FR-AIA-01,Cao,UC-45,TC-AIA-01,Hệ thống phải cho nhân viên và chủ cửa hàng nhập nhu cầu khách bằng tiếng Việt và nhận gợi ý tối đa 3 sản phẩm.
+FR-AIA-02,Cao,UC-45,"TC-AIA-01, TC-AIA-03","Hệ thống chỉ đưa vào prompt các sản phẩm active có tồn lớn hơn 0 và đã thu hẹp theo nhóm hàng, khoảng giá khi nhận ra được."
+FR-AIA-03,Cao,UC-45,TC-AIA-02,Hệ thống phải yêu cầu AI chỉ dựa vào bảng sản phẩm trong prompt và nói rõ khi thiếu dữ liệu.
+FR-AIA-04,Cao,UC-45,"TC-AIA-01, TC-AIA-04",Hệ thống phải đối chiếu mã sản phẩm trong câu trả lời với bảng đã gửi và loại phần nhắc sản phẩm không có trong bảng.
+FR-AIA-05,Trung bình,UC-45,,"Hệ thống phải hiển thị mỗi gợi ý kèm tên, giá, tồn, lý do ngắn và nút thêm vào giỏ."
+FR-AIA-06,Trung bình,UC-45,TC-AIA-05,"Hệ thống phải có phương án dự phòng: khi AI lỗi, hiển thị kết quả lọc thô theo nhóm hàng và khoảng giá."
+FR-AIA-07,Thấp,UC-45,,Hệ thống phải cho tư vấn bổ sung ở màn hình bán hàng dựa trên giỏ hiện tại (phụ kiện đi kèm).
+FR-AIA-08,Thấp,UC-45,,Hệ thống phải giữ tối đa 5 lượt hội thoại gần nhất làm ngữ cảnh trong một phiên chat.
+FR-AIG-01,Cao,"UC-08, UC-45",,"Hệ thống phải đặt prompt template trong thư mục prompts/, tách khỏi mã, có phiên bản v1, v2, v3."
+FR-AIG-02,Cao,UC-08,,Hệ thống phải đọc API key từ .env; kho mã chỉ có .env.example.
+FR-AIG-03,Cao,"UC-45, UC-46, UC-47",TC-AIG-01,"Hệ thống phải lọc dữ liệu nhạy cảm (số điện thoại, email, số tài khoản, mật khẩu) khỏi mọi nội dung gửi AI."
+FR-AIG-04,Cao,UC-45,"TC-AIG-02, TC-AIG-03","Hệ thống phải đặt timeout cho mỗi lần gọi AI và thử lại tối đa 2 lần khi timeout hoặc lỗi 429, thời gian chờ tăng dần."
+FR-AIG-05,Cao,"UC-45, UC-46, UC-47",TC-AIG-04,"Hệ thống phải xử lý phản hồi sai định dạng (SQL rỗng, Markdown thiếu mục, JSON hỏng) bằng thử lại hoặc thông báo lỗi rõ ràng."
+FR-AIG-06,Trung bình,UC-45,TC-AIG-05,Hệ thống phải giới hạn 20 lượt gọi AI mỗi người mỗi giờ.
+FR-AIG-07,Cao,UC-48,,"Hệ thống phải ghi mọi lượt gọi vào ai_logs gồm phiên bản prompt, trạng thái, thời gian xử lý, số lần thử lại."
+FR-AIG-08,Trung bình,UC-08,,Hệ thống phải cho quản trị viên bật hoặc tắt AI và chọn phiên bản prompt đang dùng.
+FR-AIG-09,Trung bình,UC-45,TC-AIA-06,"Hệ thống phải xem nội dung dữ liệu trong prompt (tên sản phẩm, mô tả) là dữ liệu, không phải chỉ dẫn, và chặn yêu cầu đổi vai trò của AI."
+FR-AIQ-01,Cao,UC-47,TC-AIQ-01,Hệ thống phải cho chủ cửa hàng hỏi bằng ngôn ngữ tự nhiên và nhận câu trả lời tiếng Việt dựa trên dữ liệu thật.
+FR-AIQ-02,Cao,UC-47,TC-AIQ-01,Hệ thống phải cho AI sinh câu lệnh SQL và chạy trực tiếp trên CSDL với kết nối chỉ đọc.
+FR-AIQ-03,Cao,UC-47,TC-AIQ-03,Hệ thống chỉ cho SQL đọc từ danh sách view v_ai_* đã loại cột nhạy cảm; truy cập bảng gốc bị từ chối.
+FR-AIQ-04,Cao,UC-47,"TC-AIQ-02, TC-AIQ-04","Hệ thống phải từ chối SQL không phải một câu SELECT duy nhất, hoặc chứa từ khóa ghi, PRAGMA, ATTACH, hàm hệ thống."
+FR-AIQ-05,Cao,UC-47,TC-AIQ-06,Hệ thống phải tự thêm LIMIT 200 và timeout 5 giây cho câu lệnh.
+FR-AIQ-06,Cao,UC-47,TC-AIQ-07,Hệ thống phải gửi kết quả truy vấn cho AI để diễn giải; kết quả rỗng thì nói rõ không có dữ liệu.
+FR-AIQ-07,Trung bình,UC-47,,"Hệ thống phải hiển thị câu trả lời, bảng kết quả và câu SQL đã chạy để chủ cửa hàng kiểm chứng."
+FR-AIQ-08,Trung bình,UC-47,,"Hệ thống phải cho AI sửa SQL một lần khi lỗi cú pháp, sau đó dừng và báo lỗi."
+FR-AIR-01,Cao,UC-46,,"Hệ thống phải tổng hợp số liệu kỳ báo cáo: doanh thu, so với kỳ trước, top bán chạy, top bán chậm, sản phẩm tồn thấp, giá trị tồn."
+FR-AIR-02,Cao,UC-46,TC-AIR-03,"Hệ thống phải gửi AI số liệu đã tổng hợp dạng JSON, không gửi danh sách hóa đơn hay thông tin khách."
+FR-AIR-03,Cao,UC-46,TC-AIR-01,"Hệ thống phải nhận báo cáo Markdown có đủ bốn mục Tổng quan, Điểm đáng chú ý, Rủi ro tồn kho, Khuyến nghị nhập hàng."
+FR-AIR-04,Trung bình,UC-46,TC-AIR-02,Hệ thống phải kiểm tra các con số trong báo cáo khớp số liệu đã gửi; sai thì thử lại một lần.
+FR-AIR-05,Trung bình,UC-46,,Hệ thống phải hiển thị số liệu gốc song song với nhận xét AI.
+FR-AIR-06,Thấp,"UC-46, UC-44",,Hệ thống phải cho xuất báo cáo AI ra PDF và lưu vào ai_logs.
+FR-AUT-01,Cao,UC-01,,"Hệ thống phải cho người dùng đăng nhập bằng tên đăng nhập và mật khẩu, trả JWT có hiệu lực 8 giờ chứa mã người dùng và vai trò."
+FR-AUT-02,Cao,UC-01,,"Hệ thống phải lưu mật khẩu dưới dạng băm bcrypt, không lưu hay ghi log mật khẩu gốc."
+FR-AUT-03,Cao,UC-01,TC-AUT-01,Hệ thống phải khóa tài khoản 15 phút sau 5 lần đăng nhập sai liên tiếp và thông báo thời gian còn lại.
+FR-AUT-04,Cao,UC-01,,Hệ thống phải trả thông báo lỗi chung cho cả trường hợp sai tên đăng nhập và sai mật khẩu.
+FR-AUT-05,Cao,UC-02,TC-AUT-03,Hệ thống phải cho đăng xuất và thu hồi token bằng bảng revoked_tokens; token đã thu hồi bị từ chối ở mọi endpoint.
+FR-AUT-06,Trung bình,UC-04,TC-AUT-04,Hệ thống phải cho đặt lại mật khẩu qua email bằng mã dùng một lần có hạn 30 phút.
+FR-AUT-07,Trung bình,UC-03,,Hệ thống phải cho người dùng đổi mật khẩu khi biết mật khẩu cũ; mật khẩu mới tối thiểu 8 ký tự gồm chữ và số.
+FR-AUT-08,Cao,UC-01,TC-AUT-02,Hệ thống phải kiểm tra vai trò ở backend cho từng endpoint theo ma trận phân quyền mục 4.2 và trả 403 khi sai quyền.
+FR-AUT-09,Trung bình,UC-01,,"Hệ thống phải tự đăng xuất khi token hết hạn và chuyển về màn hình đăng nhập, giữ giỏ hàng nháp."
+FR-CAT-01,Cao,UC-10,,"Hệ thống phải cho chủ cửa hàng thêm, sửa, ẩn nhóm hàng gồm tên, mô tả, VAT mặc định, thời hạn bảo hành mặc định."
+FR-CAT-02,Trung bình,UC-10,,"Hệ thống phải tạo sẵn các nhóm Laptop, Máy tính bảng, Điện thoại, Chuột, Lót chuột, Bàn phím, Sạc, Tai nghe khi nạp dữ liệu mẫu."
+FR-CAT-03,Trung bình,UC-10,,Hệ thống không cho xóa nhóm hàng đã có sản phẩm; chỉ cho ẩn.
+FR-CUS-01,Cao,UC-14,,"Hệ thống phải cho nhân viên và chủ cửa hàng thêm, sửa khách hàng gồm họ tên, số điện thoại, email, địa chỉ, ngày sinh."
+FR-CUS-02,Cao,UC-14,,Hệ thống phải kiểm tra số điện thoại hợp lệ và duy nhất.
+FR-CUS-03,Cao,"UC-14, UC-19",,Hệ thống phải tìm khách nhanh theo số điện thoại hoặc tên và cho thêm khách ngay trên màn hình bán hàng.
+FR-CUS-04,Trung bình,UC-15,,"Hệ thống phải hiển thị lịch sử mua hàng, tổng chi tiêu, điểm và thiết bị đang bảo hành trong hồ sơ khách."
+FR-CUS-05,Trung bình,UC-14,,"Hệ thống phải che số điện thoại trong danh sách và báo cáo, chỉ hiển thị đầy đủ ở hồ sơ khách đang mở."
+FR-CUS-06,Thấp,UC-14,,Hệ thống phải cho chủ cửa hàng vô hiệu hóa khách thay cho xóa.
+FR-EXP-01,Cao,UC-44,TC-EXP-01,Hệ thống phải xuất danh sách hóa đơn và báo cáo doanh thu ra Excel (openpyxl).
+FR-EXP-02,Trung bình,UC-44,,Hệ thống phải xuất ra PDF (fpdf2) với font có đủ ký tự tiếng Việt.
+FR-EXP-03,Trung bình,UC-44,TC-EXP-02,Hệ thống phải xuất ra CSV UTF-8 có BOM.
+FR-EXP-04,Trung bình,UC-44,,"Hệ thống phải xuất theo đúng bộ lọc đang áp dụng, tên file có loại báo cáo và khoảng ngày; giới hạn 50.000 dòng."
+FR-LOY-01,Trung bình,UC-16,,"Hệ thống phải có ba hạng Thành viên, Bạc, Vàng với ngưỡng tổng chi tiêu và hệ số điểm cấu hình được."
+FR-LOY-02,Trung bình,"UC-16, UC-31",TC-RET-06,"Hệ thống phải tự tính lại hạng khi tổng chi tiêu thay đổi do thanh toán, hủy hoặc đổi trả."
+FR-LOY-03,Cao,UC-19,TC-LOY-01,Hệ thống phải cộng điểm khi hóa đơn paid theo công thức BR-10 và ghi loyalty_transactions.
+FR-LOY-04,Trung bình,UC-22,TC-LOY-02,Hệ thống phải cho dùng điểm giảm giá theo BR-12 và trừ điểm khi hóa đơn paid.
+FR-LOY-05,Thấp,UC-17,,Hệ thống phải cho chủ cửa hàng điều chỉnh điểm thủ công kèm lý do bắt buộc.
+FR-LOY-06,Thấp,UC-15,,Hệ thống phải hiển thị lịch sử biến động điểm của từng khách.
+FR-PAY-01,Cao,UC-23,TC-SAL-06,"Hệ thống phải cho thanh toán tiền mặt, nhập tiền khách đưa và hiển thị tiền thừa."
+FR-PAY-02,Trung bình,UC-25,,Hệ thống phải cho thanh toán thẻ qua máy POS ngoài bằng cách nhập mã giao dịch.
+FR-PAY-03,Cao,UC-24,TC-PAY-01,"Hệ thống phải tạo mã VietQR chứa ngân hàng, số tài khoản, số tiền và nội dung là mã hóa đơn."
+FR-PAY-04,Trung bình,UC-24,,"Hệ thống phải hiển thị ảnh QR lớn, rõ trên màn hình quầy và đếm ngược thời gian giữ hàng."
+FR-PAY-05,Cao,UC-24,TC-PAY-02,Hệ thống phải cho nhân viên xác nhận đã nhận tiền và ghi người xác nhận cùng thời điểm.
+FR-PAY-06,Thấp,UC-24,,Hệ thống phải cho đổi phương thức thanh toán khi hóa đơn còn pending_payment.
+FR-PAY-07,Cao,UC-26,TC-PAY-03,"Hệ thống phải tạo hóa đơn PDF khổ 80 mm bằng fpdf2 với font Unicode, in được tiếng Việt có dấu."
+FR-PAY-08,Trung bình,UC-26,,Hệ thống phải in serial và hạn bảo hành của từng máy trên hóa đơn.
+FR-PAY-09,Trung bình,UC-26,,"Hệ thống phải cho in lại hóa đơn, đánh dấu Bản in lại và ghi audit log."
+FR-PAY-10,Trung bình,UC-27,TC-PAY-04,Hệ thống phải gửi hóa đơn PDF qua email khi khách có địa chỉ email và ghi kết quả vào email_logs.
+FR-PRD-01,Cao,UC-11,,"Hệ thống phải cho chủ cửa hàng thêm, sửa sản phẩm gồm SKU, mã vạch, tên, nhóm hàng, hãng, mô tả, giá bán, VAT, bảo hành, ngưỡng cảnh báo, ảnh."
+FR-PRD-02,Cao,UC-11,,Hệ thống phải kiểm tra SKU và mã vạch không trùng; giá bán lớn hơn 0; VAT từ 0 đến 100.
+FR-PRD-03,Cao,UC-11,,"Hệ thống phải có trạng thái sản phẩm active, inactive, discontinued; chỉ sản phẩm active được bán."
+FR-PRD-04,Trung bình,UC-11,,Hệ thống không cho xóa cứng sản phẩm đã phát sinh giao dịch.
+FR-PRD-05,Trung bình,UC-11,,"Hệ thống phải ghi audit log mỗi lần đổi giá bán hoặc giá vốn, gồm giá cũ và giá mới."
+FR-PRD-06,Cao,UC-13,,"Hệ thống phải cho tìm sản phẩm theo SKU, mã vạch, tên không phân biệt dấu, lọc theo nhóm hàng, khoảng giá, trạng thái, tình trạng tồn."
+FR-PRD-07,Cao,UC-13,,Hệ thống phải hiển thị nhãn Sắp hết hàng cho sản phẩm có tồn nhỏ hơn ngưỡng và nhãn Hết hàng khi tồn bằng 0.
+FR-PRD-08,Cao,"UC-11, UC-13",,"Hệ thống không hiển thị giá nhập, giá vốn cho vai trò nhân viên bán hàng."
+FR-PRD-09,Cao,UC-12,,"Hệ thống phải quản lý serial hoặc IMEI cho sản phẩm có track_serial, mỗi serial duy nhất toàn hệ thống và có trạng thái in_stock, sold, returned, defective, in_warranty."
+FR-PRD-10,Cao,UC-12,,Hệ thống phải giữ stock_qty của sản phẩm theo serial bằng số serial in_stock.
+FR-PRM-01,Cao,UC-18,,Hệ thống phải cho chủ cửa hàng tạo khuyến mãi theo phần trăm hoặc số tiền.
+FR-PRM-02,Cao,UC-18,,"Hệ thống phải áp dụng được cho ba phạm vi: một sản phẩm, một nhóm hàng, toàn hóa đơn."
+FR-PRM-03,Cao,UC-18,TC-PRM-03,"Hệ thống phải cho đặt thời gian hiệu lực, giá trị hóa đơn tối thiểu, mức giảm tối đa, số lượt dùng tối đa."
+FR-PRM-04,Cao,UC-18,,Hệ thống phải cho tạo khuyến mãi dùng mã voucher hoặc tự động áp dụng.
+FR-PRM-05,Cao,UC-21,,Hệ thống phải tự áp khuyến mãi hợp lệ khi giỏ hàng thay đổi và hiển thị rõ khuyến mãi nào được áp.
+FR-PRM-06,Cao,UC-21,"TC-PRM-01, TC-PRM-02","Hệ thống phải xử lý trùng khuyến mãi theo BR-05, BR-06 và báo lý do khi voucher không hợp lệ."
+FR-PRM-07,Trung bình,UC-18,,"Hệ thống phải tạm dừng, kích hoạt lại và tự chuyển expired khi quá hạn."
+FR-PUR-01,Cao,UC-36,,"Hệ thống phải cho lập phiếu nhập gồm nhà cung cấp, danh sách dòng hàng, số lượng, giá nhập, ghi chú."
+FR-PUR-02,Cao,UC-36,TC-PUR-04,"Hệ thống phải cho lưu nháp, sửa và xóa phiếu nháp mà không đổi tồn kho."
+FR-PUR-03,Cao,UC-36,TC-PUR-03,"Hệ thống phải bắt nhập đủ serial cho dòng hàng có serial, kiểm tra không trùng."
+FR-PUR-04,Cao,UC-36,TC-PUR-01,"Hệ thống phải cộng tồn và ghi thẻ kho khi phiếu được xác nhận, trong một giao dịch CSDL."
+FR-PUR-05,Cao,UC-36,TC-PUR-02,Hệ thống phải cập nhật giá vốn bình quân gia quyền theo BR-19.
+FR-PUR-06,Trung bình,UC-37,TC-PUR-05,Hệ thống phải cho chủ cửa hàng hủy phiếu đã xác nhận khi đủ điều kiện BR-22.
+FR-PUR-07,Trung bình,UC-36,,Hệ thống phải cấp mã PN-yyyyMMdd-nnn không trùng.
+FR-PUR-08,Cao,UC-36,,Hệ thống phải ẩn giá nhập với nhân viên bán hàng.
+FR-RET-01,Cao,UC-31,,Hệ thống phải tra hóa đơn đổi trả theo mã hoặc số điện thoại khách.
+FR-RET-02,Cao,UC-31,"TC-RET-01, TC-RET-02",Hệ thống phải từ chối đổi trả khi quá 24 giờ kể từ lúc thanh toán và hiển thị thời gian còn lại khi còn hạn.
+FR-RET-03,Cao,UC-31,TC-RET-05,"Hệ thống phải cho chọn dòng hàng và số lượng trả, không vượt số đã mua trừ số đã trả."
+FR-RET-04,Cao,UC-31,TC-RET-03,Hệ thống phải đối chiếu serial trả với serial trên hóa đơn.
+FR-RET-05,Cao,UC-31,TC-RET-01,Hệ thống phải tính tiền hoàn theo BR-32 và điểm bị trừ theo BR-35.
+FR-RET-06,Cao,UC-31,TC-RET-04,Hệ thống phải cho chọn tình trạng sellable hoặc defective; chỉ hàng sellable nhập lại kho.
+FR-RET-07,Trung bình,UC-31,,Hệ thống phải cho phép đổi sản phẩm bằng hóa đơn mới có khấu trừ giá trị hàng trả.
+FR-RET-08,Trung bình,UC-31,,Hệ thống phải in phiếu đổi trả và vô hiệu hồ sơ bảo hành của dòng đã trả.
+FR-RPT-01,Cao,UC-41,,"Hệ thống phải có dashboard với doanh thu hôm nay, số hóa đơn, lợi nhuận gộp, số sản phẩm sắp hết, biểu đồ doanh thu 30 ngày."
+FR-RPT-02,Cao,UC-42,TC-RPT-01,"Hệ thống phải thống kê doanh thu theo ngày, tháng, khoảng ngày tùy chọn."
+FR-RPT-03,Cao,UC-42,,Hệ thống phải thống kê doanh thu theo nhóm hàng và theo sản phẩm.
+FR-RPT-04,Cao,UC-42,TC-RPT-03,Hệ thống phải liệt kê sản phẩm bán chạy và sản phẩm bán chậm theo số lượng và doanh thu.
+FR-RPT-05,Trung bình,UC-42,TC-RPT-02,Hệ thống phải tính lợi nhuận gộp bằng doanh thu chưa VAT trừ giá vốn tại lúc bán.
+FR-RPT-06,Trung bình,UC-42,,Hệ thống phải trừ tiền hoàn của đổi trả vào doanh thu của ngày đổi trả.
+FR-RPT-07,Trung bình,UC-43,,"Hệ thống phải báo cáo tồn kho gồm giá trị tồn, sản phẩm sắp hết, sản phẩm không bán được 30 ngày."
+FR-RPT-08,Trung bình,UC-42,,Hệ thống phải trả báo cáo cho kỳ một tháng trong dưới 3 giây với dữ liệu mẫu.
+FR-SAL-01,Cao,"UC-19, UC-20",,Hệ thống phải cung cấp màn hình bán hàng có ô quét mã vạch luôn giữ focus và thêm sản phẩm vào giỏ ngay khi nhận Enter.
+FR-SAL-02,Cao,UC-19,,Hệ thống phải thêm sản phẩm bằng tìm theo tên hoặc SKU khi không có mã vạch.
+FR-SAL-03,Cao,UC-19,TC-SAL-02,Hệ thống phải chặn thêm sản phẩm hết hàng hoặc vượt tồn và báo số lượng còn lại.
+FR-SAL-04,Cao,"UC-19, UC-20",TC-SAL-03,"Hệ thống phải bắt chọn serial cho sản phẩm có serial; mỗi dòng một serial, số lượng bằng 1."
+FR-SAL-05,Cao,"UC-19, UC-21",TC-SAL-01,"Hệ thống phải tính tạm tính, giảm giá, tổng phải trả, VAT đã gồm và điểm dự kiến theo BR-01 đến BR-13 mỗi khi giỏ thay đổi."
+FR-SAL-06,Cao,UC-19,,Hệ thống phải cho chọn khách hàng hoặc bán cho khách lẻ.
+FR-SAL-07,Trung bình,UC-19,,Hệ thống phải lưu giỏ hàng dạng draft tự động để khôi phục khi mất kết nối hoặc đóng nhầm trình duyệt.
+FR-SAL-08,Cao,UC-19,"TC-SAL-04, TC-SAL-05","Hệ thống phải ghi hóa đơn, trừ tồn, ghi thẻ kho, cộng điểm, tạo bảo hành trong một giao dịch CSDL; lỗi ở bước nào thì hoàn tác toàn bộ."
+FR-SAL-09,Cao,UC-29,"TC-SAL-07, TC-SAL-09","Hệ thống phải cho hủy hóa đơn theo BR-25 và hoàn tồn kho, điểm, voucher, bảo hành."
+FR-SAL-10,Trung bình,UC-29,TC-SAL-08,Hệ thống phải cho nhân viên gửi yêu cầu hủy hóa đơn đã thanh toán và chủ cửa hàng duyệt hoặc từ chối.
+FR-SAL-11,Trung bình,UC-28,,"Hệ thống phải cho sửa hóa đơn draft và pending_payment, tính lại các khoản và đồng bộ tồn."
+FR-SAL-12,Cao,UC-19,TC-SAL-12,"Hệ thống phải cấp mã hóa đơn HD-yyyyMMdd-nnnn không trùng, kể cả khi hai quầy lập đồng thời."
+FR-SAL-13,Cao,UC-30,,"Hệ thống phải tìm và lọc hóa đơn theo mã, khách, ngày, trạng thái, phương thức thanh toán, nhân viên."
+FR-SAL-14,Trung bình,UC-19,TC-SAL-11,Hệ thống phải cảnh báo khi giá sau giảm thấp hơn giá vốn và chỉ cho chủ cửa hàng xác nhận bán.
+FR-SAL-15,Trung bình,UC-24,TC-SAL-10,Hệ thống phải tự hủy hóa đơn pending_payment sau 30 phút và hoàn tồn kho.
+FR-STK-01,Cao,"UC-19, UC-29, UC-31, UC-36",TC-STK-03,"Hệ thống phải cập nhật tồn kho đúng khi bán, hủy, đổi trả, nhập, hủy nhập, kiểm kê và không cho tồn âm."
+FR-STK-02,Cao,UC-38,TC-STK-01,"Hệ thống phải cảnh báo sắp hết hàng khi tồn nhỏ hơn 5 (ngưỡng cấu hình) trên thanh điều hướng, dashboard và danh sách sản phẩm."
+FR-STK-03,Cao,UC-40,TC-STK-02,Hệ thống phải ghi mỗi biến động vào stock_movements với tồn trước và tồn sau.
+FR-STK-04,Trung bình,UC-39,TC-STK-04,Hệ thống phải cho chủ cửa hàng kiểm kê và điều chỉnh tồn kèm lý do bắt buộc.
+FR-STK-05,Trung bình,UC-40,,Hệ thống phải cho xem thẻ kho theo sản phẩm và khoảng ngày.
+FR-STK-06,Cao,UC-19,TC-SAL-04,Hệ thống phải xử lý hai giao dịch trừ tồn đồng thời trên cùng sản phẩm mà không làm tồn âm.
+FR-SUP-01,Cao,UC-35,,"Hệ thống phải cho chủ cửa hàng thêm, sửa nhà cung cấp gồm mã, tên, liên hệ, điện thoại, email, địa chỉ, mã số thuế."
+FR-SUP-02,Trung bình,UC-35,,Hệ thống phải kiểm tra mã nhà cung cấp không trùng.
+FR-SUP-03,Trung bình,UC-35,,Hệ thống phải cho đặt nhà cung cấp inactive; không xóa nhà cung cấp đã có phiếu nhập.
+FR-SUP-04,Thấp,UC-35,,Hệ thống phải liệt kê lịch sử phiếu nhập theo nhà cung cấp.
+FR-SYS-01,Cao,UC-09,,"Hệ thống phải có lệnh seed nạp dữ liệu mẫu theo Phụ lục A: 3 tài khoản, 8 nhóm hàng, 40 sản phẩm, 20 khách, 5 nhà cung cấp, 60 hóa đơn."
+FR-SYS-02,Trung bình,"UC-07, UC-08",,Hệ thống phải lưu tham số cấu hình trong bảng settings và đọc lại không cần khởi động lại.
+FR-SYS-03,Trung bình,UC-06,,"Hệ thống phải ghi audit log các hành động: đăng nhập thất bại, đổi giá, hủy hóa đơn, đổi trả, điều chỉnh tồn, điều chỉnh điểm, đổi vai trò, sửa cấu hình."
+FR-SYS-04,Thấp,UC-09,,Hệ thống phải cho quản trị viên sao lưu CSDL và khôi phục từ tệp sao lưu.
+FR-SYS-05,Thấp,UC-08,,Hệ thống phải cung cấp tài liệu OpenAPI ở /docs khi chạy ở chế độ phát triển.
+FR-USR-01,Cao,UC-05,,"Hệ thống phải cho quản trị viên thêm tài khoản với tên đăng nhập, họ tên, email, vai trò và mật khẩu tạm."
+FR-USR-02,Trung bình,UC-05,,Hệ thống phải bắt tài khoản mới đổi mật khẩu ở lần đăng nhập đầu tiên.
+FR-USR-03,Cao,UC-05,,"Hệ thống phải cho quản trị viên sửa thông tin, đổi vai trò, khóa hoặc mở khóa, đặt lại mật khẩu cho người dùng."
+FR-USR-04,Trung bình,UC-05,,"Hệ thống không cho khóa hoặc hạ vai trò tài khoản quản trị viên cuối cùng, không cho quản trị viên tự khóa chính mình."
+FR-USR-05,Trung bình,"UC-05, UC-06",,Hệ thống phải ghi audit log mọi thay đổi tài khoản và vai trò.
+FR-WAR-01,Cao,"UC-19, UC-32",TC-WAR-01,"Hệ thống phải tự tạo hồ sơ bảo hành cho mỗi dòng hóa đơn khi hóa đơn paid, hạn theo warranty_months."
+FR-WAR-02,Cao,UC-32,TC-WAR-02,"Hệ thống phải tra cứu bảo hành theo serial, IMEI, số điện thoại hoặc mã hóa đơn."
+FR-WAR-03,Cao,UC-33,TC-WAR-03,Hệ thống phải cho tạo phiếu bảo hành khi hồ sơ còn hạn và gán mã BH-yyyyMMdd-nnn.
+FR-WAR-04,Trung bình,UC-33,TC-WAR-04,Hệ thống phải chặn tạo phiếu thứ hai khi serial đang có phiếu xử lý.
+FR-WAR-05,Trung bình,UC-33,,Hệ thống phải in biên nhận bảo hành.
+FR-WAR-06,Thấp,UC-33,,Hệ thống phải gửi email xác nhận tiếp nhận khi khách có email.
+FR-WAR-07,Trung bình,UC-34,,"Hệ thống phải cho cập nhật trạng thái phiếu theo sơ đồ received, in_repair, waiting_parts, done, rejected, returned và chặn chuyển sai thứ tự."
+FR-WAR-08,Thấp,UC-34,,Hệ thống phải gửi email khi phiếu done hoặc rejected.
+NFR-AIQ-01,Cao,,,"Trên bộ 30 câu kiểm thử, phiên bản prompt tư vấn được chọn phải có 0 lần gợi ý sản phẩm hết hàng và 0 lần gợi ý sản phẩm không có trong dữ liệu."
+NFR-AIQ-02,Trung bình,,,Tối thiểu 90% câu trả lời hỏi đáp dữ liệu có số liệu khớp kết quả SQL.
+NFR-AIQ-03,Cao,,TC-AIQ-05,100% câu SQL do AI sinh phải qua bộ kiểm tra trước khi chạy; 0 câu ghi dữ liệu chạy được.
+NFR-AIQ-04,Trung bình,,,Báo cáo AI luôn có đủ bốn mục bắt buộc hoặc bị thay bằng số liệu thô.
+NFR-AIQ-05,Cao,,,Mọi lượt gọi AI có bản ghi trong ai_logs kể cả khi lỗi.
+NFR-DAT-01,Cao,,TC-AIG-01,"Không gửi cho Gemini số điện thoại đầy đủ, email, địa chỉ, họ tên khách, dữ liệu thanh toán, mật khẩu."
+NFR-DAT-02,Trung bình,,,"Số điện thoại khách che dạng 0912 *** 678 trong danh sách, báo cáo, nhật ký và tệp xuất; chỉ hiện đầy đủ ở hồ sơ khách đang mở."
+NFR-DAT-03,Trung bình,,,"Nhật ký AI lưu câu hỏi đã lọc, không lưu bản gốc chứa dữ liệu cá nhân."
+NFR-DAT-04,Thấp,,,Chỉ thu thập dữ liệu khách cần cho bán hàng và bảo hành; khách có thể yêu cầu xóa hoặc ẩn danh thông tin khi không còn hóa đơn trong thời hạn bảo hành.
+NFR-DAT-05,Thấp,,,"Audit log lưu giá trị cũ và mới nhưng che số điện thoại, email."
+NFR-LEG-01,Trung bình,,,"Mức VAT, nội dung hóa đơn và việc lưu trữ chứng từ phải do chủ cửa hàng đối chiếu với quy định hiện hành trước khi dùng thật."
+NFR-LEG-02,Trung bình,,,Chính sách đổi trả 24 giờ và bảo hành 12 tháng in trên hóa đơn để khách biết.
+NFR-LEG-03,Trung bình,,,Dữ liệu hóa đơn và nhật ký không xóa trong quá trình dùng bình thường.
+NFR-MNT-01,Cao,,,"Mã backend chia lớp router, service, repository; logic nghiệp vụ không nằm trong router."
+NFR-MNT-02,Trung bình,,,"Độ bao phủ test của các service bán hàng, kho, báo cáo, AI đạt tối thiểu 70% dòng lệnh."
+NFR-MNT-03,Thấp,,,"Mã Python tuân thủ PEP 8, kiểm bằng công cụ lint trong quy trình."
+NFR-MNT-04,Cao,,,"Prompt, tham số kinh doanh, cấu hình tách khỏi mã (thư mục prompts/, bảng settings, .env)."
+NFR-MNT-05,Cao,,,"Có tài liệu README, hướng dẫn cài đặt, hướng dẫn nạp dữ liệu mẫu, tài liệu API OpenAPI."
+NFR-MNT-06,Thấp,,,"Đổi CSDL từ SQLite sang PostgreSQL chỉ cần đổi chuỗi kết nối và chạy migration, không sửa logic nghiệp vụ."
+NFR-MNT-07,Thấp,,,Thay Gemini bằng nhà cung cấp AI khác chỉ cần viết lớp con của AIClient.
+NFR-PER-01,Cao,,,"Thao tác đọc thông thường (tra sản phẩm theo mã vạch, mở hóa đơn) phải phản hồi dưới 500 ms ở phân vị 95 với 5 người dùng đồng thời."
+NFR-PER-02,Cao,,,Chốt hóa đơn 4 dòng hàng phải hoàn tất dưới 1 giây ở phân vị 95.
+NFR-PER-03,Cao,,,Tính lại tổng tiền giỏ hàng (preview) phải dưới 300 ms.
+NFR-PER-04,Trung bình,,,Báo cáo doanh thu cho kỳ một tháng phải trả dưới 3 giây; dashboard dưới 2 giây.
+NFR-PER-05,Trung bình,,,Xuất Excel 10.000 dòng phải hoàn tất dưới 10 giây.
+NFR-PER-06,Trung bình,,,Tư vấn AI phải phản hồi dưới 10 giây ở phân vị 90; hỏi đáp text-to-SQL và sinh báo cáo dưới 20 giây ở phân vị 90 (phụ thuộc Gemini).
+NFR-PER-07,Cao,,,Hệ thống phải chịu tối đa 5 người dùng đồng thời và 2 giao dịch bán hàng cùng lúc mà không lỗi khóa CSDL.
+NFR-POR-01,Trung bình,,,Giao diện chạy trên Chrome và Edge bản hai năm gần nhất; Firefox ở mức cố gắng.
+NFR-POR-02,Cao,,,Hệ thống chạy được bằng một lệnh docker compose up trên Windows và Linux.
+NFR-POR-03,Cao,,,Dữ liệu SQLite nằm trong volume; cập nhật phiên bản không mất dữ liệu.
+NFR-POR-04,Thấp,,,Có ghi chú triển khai lên Render (Web Service và Disk) và các biến môi trường cần đặt.
+NFR-POR-05,Trung bình,,,Hóa đơn in đúng tiếng Việt trên máy in nhiệt 80 mm.
+NFR-POR-06,Trung bình,,,Múi giờ máy chủ và ứng dụng là Asia/Ho_Chi_Minh; ngày giờ hiển thị theo giờ Việt Nam.
+NFR-REL-01,Cao,,,Các giao dịch ở mục 7.6 phải nguyên tử: lỗi giữa chừng không để lại dữ liệu nửa vời.
+NFR-REL-02,Cao,,TC-STK-02,stock_qty của mọi sản phẩm phải bằng tổng quantity_change trong thẻ kho; có lệnh kiểm tra đối chiếu.
+NFR-REL-03,Trung bình,,,Hệ thống phải khởi động lại tự động sau sự cố (restart: unless-stopped) và giữ nguyên dữ liệu.
+NFR-REL-04,Trung bình,,,"Sao lưu tự động mỗi đêm, giữ 14 bản; có hướng dẫn khôi phục đã thử một lần."
+NFR-REL-05,Cao,,,"Khi Gemini không khả dụng, mọi chức năng không phải AI vẫn chạy bình thường."
+NFR-REL-06,Thấp,,,"Khi mất kết nối giữa trình duyệt và máy chủ, giỏ hàng draft không mất."
+NFR-SEC-01,Cao,,,Mật khẩu băm bcrypt với cost tối thiểu 12; không ghi mật khẩu vào log.
+NFR-SEC-02,Cao,,,"JWT ký HS256 bằng SECRET_KEY dài tối thiểu 32 ký tự lấy từ .env; kiểm tra chữ ký, hạn và danh sách thu hồi ở mọi endpoint."
+NFR-SEC-03,Cao,,TC-AIQ-08,Mọi endpoint ngoài đăng nhập và quên mật khẩu phải yêu cầu xác thực; kiểm tra vai trò ở backend.
+NFR-SEC-04,Trung bình,,,Khóa tài khoản 15 phút sau 5 lần sai; giới hạn 10 lần đăng nhập mỗi phút trên mỗi địa chỉ IP.
+NFR-SEC-05,Cao,,,"Mọi truy vấn CSDL dùng tham số hóa của ORM; không ghép chuỗi SQL từ dữ liệu người dùng. Ngoại lệ duy nhất là SQL do AI sinh, đi qua năm lớp bảo vệ ở mục 6.5."
+NFR-SEC-06,Trung bình,,,"Giao diện phải thoát ký tự đầu ra để chống XSS; React thoát mặc định, không dùng dangerouslySetInnerHTML trừ khi qua bộ lọc cho Markdown của AI."
+NFR-SEC-07,Trung bình,,,"CORS chỉ cho phép địa chỉ giao diện đã cấu hình; tiêu đề bảo mật cơ bản (X-Content-Type-Options, X-Frame-Options) bật ở Nginx."
+NFR-SEC-08,Cao,,TC-AIG-06,"API key, khóa SMTP, SECRET_KEY chỉ ở .env; .env nằm trong .gitignore; kho mã không có khóa thật."
+NFR-SEC-09,Cao,,TC-AUT-02,Chỉ chủ cửa hàng thấy giá vốn và lợi nhuận: API không trả trường giá vốn cho nhân viên (không chỉ ẩn trên giao diện).
+NFR-SEC-10,Trung bình,,,"Tệp tải lên (ảnh sản phẩm, CSV nhập) giới hạn kích thước 5 MB, kiểm tra loại tệp bằng nội dung, lưu tên ngẫu nhiên."
+NFR-SEC-11,Trung bình,,,Sao lưu CSDL không chứa khóa API; tệp sao lưu chỉ tải về được bởi quản trị viên.
+NFR-USA-01,Trung bình,,,Nhân viên mới học cách lập hóa đơn trong dưới 30 phút theo tài liệu hướng dẫn.
+NFR-USA-02,Trung bình,,,Lập hóa đơn 3 sản phẩm không serial thanh toán tiền mặt trong dưới 90 giây.
+NFR-USA-03,Trung bình,,,"Mọi thông báo lỗi bằng tiếng Việt, nêu nguyên nhân và hướng xử lý."
+NFR-USA-04,Thấp,,,"Chữ trên màn hình bán hàng không nhỏ hơn 14 px; tổng tiền không nhỏ hơn 28 px; độ tương phản đạt tối thiểu 4,5:1."
+NFR-USA-05,Trung bình,,,Mọi thao tác chính dùng được bằng bàn phím.

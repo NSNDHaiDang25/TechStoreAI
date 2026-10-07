@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+  <script>
+    // Áp giao diện sáng / tối trước khi vẽ trang để không bị nháy màu.
+    // Chưa chọn lần nào thì theo cài đặt của hệ điều hành.
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('theme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <title>TechStoreAI - Quản lý bán hàng</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <!-- Màn hình đăng nhập: trái là ảnh giới thiệu, phải là form -->
+  <section id="login-view" class="auth hidden">
+    <aside class="auth-hero">
+      <img class="auth-hero-img" src="/static/img/login-bg.webp" alt="" aria-hidden="true">
+      <div class="auth-hero-inner">
+        <div class="auth-logo"><span class="brand-mark" data-icon="store"></span>TechStoreAI</div>
+        <div>
+          <h1 class="auth-title">Hệ thống bán hàng<br><span class="accent-text">tích hợp AI</span></h1>
+          <p class="auth-lead">Bán hàng, quản lý kho, khách hàng và báo cáo doanh thu trên một nền tảng. Trợ lý AI trả lời mọi câu hỏi về cửa hàng từ dữ liệu thật.</p>
+          <span class="auth-pill">Nền tảng vận hành thông minh</span>
+        </div>
+        <div class="auth-copy">© 2026 TechStoreAI. Bảo lưu mọi quyền.</div>
+      </div>
+    </aside>
+
+    <main class="auth-main">
+      <div class="auth-top">
+        <span class="muted">Bạn cần hỗ trợ?</span>
+        <div class="auth-top-actions">
+          <button type="button" class="link-btn" id="contact-admin" data-icon="headset">Liên hệ quản trị viên</button>
+          <button class="btn ghost icon-only theme-toggle" data-theme-toggle type="button"></button>
+        </div>
+      </div>
+
+      <form id="login-form" class="auth-card">
+        <div class="auth-card-brand"><span class="brand-mark" data-icon="store"></span>TechStoreAI</div>
+        <div>
+          <h2 class="auth-card-title">Chào mừng trở lại</h2>
+          <p class="muted auth-card-sub">Đăng nhập để tiếp tục vào hệ thống quản lý bán hàng.</p>
+        </div>
+        <label>Tên đăng nhập
+          <div class="input-icon" data-icon="user"><input name="username" placeholder="Nhập tên đăng nhập" autocomplete="username" required></div>
+        </label>
+        <label>Mật khẩu
+          <div class="input-icon has-action" data-icon="lock">
+            <input name="password" type="password" placeholder="Nhập mật khẩu" autocomplete="current-password" required>
+            <button type="button" class="input-action" id="pw-toggle" aria-label="Hiện mật khẩu" title="Hiện mật khẩu" data-icon="eye"></button>
+          </div>
+        </label>
+        <div class="auth-row">
+          <label class="checkbox"><input type="checkbox" name="remember" checked>Ghi nhớ đăng nhập</label>
+          <button type="button" class="link-btn" id="forgot-btn">Quên mật khẩu?</button>
+        </div>
+        <button class="btn primary block lg" type="submit" id="login-submit">Đăng nhập</button>
+        <p id="login-error" class="error" role="alert"></p>
+        <p class="auth-register">Chưa có tài khoản? <button type="button" class="link-btn" id="register-btn">Tạo tài khoản</button></p>
+        <div class="auth-divider">Hoặc dùng tài khoản demo</div>
+        <div class="demo-grid">
+          <button type="button" class="btn" data-demo="admin/admin123" data-icon="shield">Quản trị</button>
+          <button type="button" class="btn" data-demo="owner/owner123" data-icon="store">Chủ cửa hàng</button>
+          <button type="button" class="btn" data-demo="staff/staff123" data-icon="user">Nhân viên</button>
+        </div>
+        <p class="auth-secure" data-icon="shield">Mật khẩu được mã hóa · phiên tự hết hạn sau 8 giờ</p>
+      </form>
+
+      <div class="auth-foot">
+        <span>Phiên bản 1.0.0</span>
+        <a href="/docs" target="_blank" rel="noopener">Tài liệu API</a>
+      </div>
+    </main>
+  </section>
+
+  <!-- Ứng dụng chính -->
+  <div id="app-view" class="layout hidden">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><span class="brand-mark" data-icon="store"></span>TechStoreAI</div>
+      <nav id="nav"></nav>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn" id="menu-toggle" aria-label="Mở menu" data-icon="menu"></button>
+        <h1 id="page-title"></h1>
+        <div class="spacer"></div>
+        <span id="ai-badge" class="badge"></span>
+        <button class="btn ghost icon-only theme-toggle" id="theme-btn" data-theme-toggle type="button"></button>
+        <div class="user-chip" id="user-chip"></div>
+        <button class="btn ghost icon-only" id="logout-btn" title="Đăng xuất" aria-label="Đăng xuất" data-icon="logout"></button>
+      </header>
+      <main id="page"></main>
+    </div>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+</body>
+</html>

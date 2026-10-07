@@ -1,0 +1,40 @@
+/* Bổ sung riêng cho giao diện React (base.css dùng chung với giao diện cũ, không sửa ở đó) */
+.center-screen { min-height: 100vh; display: grid; place-items: center; background: var(--bg); }
+
+/* Hỏi đáp dữ liệu: bảng kết quả và câu SQL đã chạy (FR-AIQ-07) */
+.sql-result { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); min-width: 0; }
+.sql-result .table-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.sql-result table { font-size: var(--fs-sm); }
+.sql-result th { position: sticky; top: 0; background: var(--surface-2); z-index: 1; }
+.sql-result .link-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--space-1); color: var(--primary); }
+.sql-code {
+  margin: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text); font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word;
+  max-height: 260px; overflow: auto;
+}
+
+/* Nút đang chọn trong nhóm nút chọn nhanh kỳ báo cáo */
+.btn-group .btn.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); position: relative; z-index: 1; }
+
+/* Cấu hình hệ thống */
+.settings-list { display: flex; flex-direction: column; }
+.settings-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 280px); gap: var(--space-4); align-items: center;
+  padding: var(--space-3) 0; border-top: 1px solid var(--border); }
+.settings-row:first-child { border-top: 0; }
+.settings-row .k { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--fs-xs); color: var(--muted); }
+.settings-row.changed { background: var(--primary-soft); margin: 0 calc(-1 * var(--space-3)); padding-left: var(--space-3); padding-right: var(--space-3); border-radius: var(--radius-sm); }
+@media (max-width: 640px) { .settings-row { grid-template-columns: 1fr; gap: var(--space-2); } }
+
+.json-diff { margin: 0; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; max-width: 420px; }
+
+/* Nhãn lọc dạng chip: trạng thái đang chọn */
+.chip.active { background: var(--primary-solid, var(--primary)); border-color: var(--primary-solid, var(--primary)); color: var(--on-primary); }
+.chip.active:hover { color: var(--on-primary); background: var(--primary-hover); }
+
+/* Thẻ KPI: số tiền dài không tràn khỏi thẻ khi một hàng có 5 thẻ */
+.kpi-card .value { font-size: clamp(16px, 1.3vw, var(--fs-xl)); white-space: normal; line-height: 1.25; letter-spacing: -0.01em; }
+.kpi-card > .min-w-0 { min-width: 0; flex: 1; }
+
+/* Bảng kết quả trong khung chat không vượt quá cột hội thoại */
+.turn-ai .body { min-width: 0; }
+.turn-ai .extra { min-width: 0; max-width: 100%; }

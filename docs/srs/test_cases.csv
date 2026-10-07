@@ -1,0 +1,73 @@
+id,name,steps,expected
+TC-SAL-01,Tính hóa đơn mẫu,"Khách Bạc 420 điểm; mua laptop, 2 chuột, tai nghe, sạc; voucher TECH10 (500.000); dùng 200 điểm",Tạm tính 18.110.000; giảm 520.000; phải trả 17.590.000; VAT 1.599.091; điểm cộng 2.110
+TC-SAL-02,Chặn bán vượt tồn,"Sản phẩm tồn 1, thêm số lượng 2","Báo lỗi OUT_OF_STOCK, giỏ giữ nguyên"
+TC-SAL-03,Bắt chọn serial,Thêm laptop không chọn serial rồi chốt,Từ chối 422 yêu cầu serial
+TC-SAL-04,Hai quầy bán sản phẩm cuối cùng,Tồn 1; hai luồng chốt cùng lúc,"Một hóa đơn thành công, một nhận OUT_OF_STOCK, tồn bằng 0 không âm"
+TC-SAL-05,Giao dịch hoàn tác khi lỗi,Gây lỗi ở bước tạo bảo hành,"Không có hóa đơn, tồn kho và điểm giữ nguyên"
+TC-SAL-06,Chốt tiền mặt,Khách đưa 20.000.000 cho hóa đơn 17.590.000,"Tiền thừa 2.410.000, hóa đơn paid"
+TC-SAL-07,Hủy hóa đơn cùng ngày,Hủy hóa đơn mẫu bằng chủ cửa hàng,"Tồn hoàn lại, điểm về 420, voucher giảm used_count, bảo hành void"
+TC-SAL-08,Nhân viên hủy hóa đơn đã thanh toán,Nhân viên bấm hủy hóa đơn paid,"Tạo yêu cầu chờ duyệt, hóa đơn chưa đổi"
+TC-SAL-09,Hủy hóa đơn khác ngày,Hủy hóa đơn hôm qua,"Từ chối, hướng dẫn đổi trả"
+TC-SAL-10,Hóa đơn chờ chuyển khoản quá hạn,Chờ 31 phút,"Tự chuyển cancelled, hoàn tồn"
+TC-SAL-11,Cảnh báo bán dưới giá vốn,Nhân viên bán dưới giá vốn,"Chặn, chỉ chủ cửa hàng xác nhận được"
+TC-SAL-12,Mã hóa đơn không trùng,20 luồng chốt đồng thời,"20 mã khác nhau, tăng dần"
+TC-PAY-01,Tạo VietQR,"Hóa đơn 17.590.000, nội dung HD-...","Chuỗi QR có đúng số tiền, nội dung; CRC hợp lệ"
+TC-PAY-02,Xác nhận chuyển khoản,Bấm xác nhận,"Hóa đơn paid, ghi người xác nhận, cộng điểm"
+TC-PAY-03,PDF hóa đơn tiếng Việt,Tạo PDF hóa đơn mẫu,"PDF 80 mm, dấu tiếng Việt hiển thị đúng, có serial"
+TC-PAY-04,Gửi email lỗi không chặn hóa đơn,Giả lập Resend trả lỗi,"Hóa đơn vẫn paid, email_logs failed"
+TC-STK-01,Cảnh báo dưới 5,Hạ tồn một sản phẩm từ 5 xuống 4,Xuất hiện trong danh sách cảnh báo; tồn 5 thì không
+TC-STK-02,Đối chiếu thẻ kho,"Sau chuỗi bán, nhập, hủy, đổi trả",stock_qty bằng tổng thẻ kho cho mọi sản phẩm
+TC-STK-03,Tồn không âm,Điều chỉnh tồn xuống âm,Từ chối
+TC-STK-04,Kiểm kê,Nhập số thực tế khác tồn,"Ghi thẻ kho adjust, audit log, bắt buộc lý do"
+TC-PUR-01,Xác nhận phiếu nhập,Nhập 20 chuột giá 210.000,"Tồn +20, thẻ kho purchase_in"
+TC-PUR-02,Giá vốn bình quân,Tồn 10 giá vốn 200.000; nhập 10 giá 220.000,Giá vốn mới 210.000
+TC-PUR-03,Serial nhập trùng,Nhập IMEI đã tồn tại,"Từ chối, liệt kê serial trùng"
+TC-PUR-04,Lưu nháp không đổi tồn,Lưu nháp phiếu,Tồn không đổi
+TC-PUR-05,Hủy phiếu khi đã bán,Hủy phiếu có serial đã bán,Từ chối theo BR-22
+TC-RET-01,Đổi trả trong hạn,"Trả tai nghe hóa đơn mẫu sau 3 giờ, hàng sellable",Hoàn 1.155.831; trừ 138 điểm; tồn +1; hóa đơn partially_returned
+TC-RET-02,Quá 24 giờ,Trả sau 25 giờ,Từ chối RETURN_WINDOW_EXPIRED
+TC-RET-03,Serial không khớp,Trả laptop với serial khác,Từ chối dòng
+TC-RET-04,Hàng lỗi không nhập kho,Trả tình trạng defective,"Tồn không đổi, serial defective"
+TC-RET-05,Trả vượt số lượng,"Mua 1, trả 2",Từ chối
+TC-RET-06,Tính lại hạng,Khách Bạc trả hàng đưa chi tiêu dưới 20 triệu,Hạng về Thành viên
+TC-WAR-01,Tự tạo bảo hành,Chốt hóa đơn có laptop,Hồ sơ bảo hành đến cùng ngày sau 12 tháng
+TC-WAR-02,Tra cứu theo IMEI,Nhập IMEI,"Hiển thị đúng hồ sơ, ngày còn lại"
+TC-WAR-03,Từ chối hết hạn,Giả lập ngày sau hạn,Không tạo phiếu
+TC-WAR-04,Chặn phiếu thứ hai,Tạo phiếu thứ hai cho cùng serial,"Từ chối, trả phiếu đang xử lý"
+TC-LOY-01,Điểm theo hạng,Mua 1.000.000 hạng Vàng,Cộng 150 điểm
+TC-LOY-02,Giới hạn dùng điểm,Dùng điểm vượt 50% hóa đơn,Tự hạ về mức tối đa
+TC-PRM-01,Voucher hết hạn,Nhập mã quá hạn,"Báo hết hạn, không áp"
+TC-PRM-02,Chọn khuyến mãi lớn nhất,Hai khuyến mãi cùng sản phẩm,Chỉ áp mức giảm tiền lớn hơn
+TC-PRM-03,Hết lượt dùng,"usage_limit 1, dùng lần hai",Từ chối
+TC-AUT-01,Khóa sau 5 lần sai,Đăng nhập sai 5 lần,Lần 6 báo bị khóa 15 phút
+TC-AUT-02,Phân quyền nhân viên,Nhân viên gọi báo cáo doanh thu và xem sản phẩm,403 và không có trường cost_price
+TC-AUT-03,Token đã thu hồi,Đăng xuất rồi dùng lại token,401
+TC-AUT-04,Đặt lại mật khẩu,Dùng mã hai lần,Lần hai bị từ chối
+TC-RPT-01,Doanh thu ngày,Dữ liệu mẫu 60 hóa đơn,Tổng khớp tổng hóa đơn paid trừ hoàn tiền
+TC-RPT-02,Lợi nhuận gộp,Hóa đơn mẫu,Doanh thu chưa VAT trừ tổng cost_snapshot
+TC-RPT-03,Top bán chạy,Dữ liệu mẫu,Thứ tự theo số lượng đúng
+TC-EXP-01,Xuất Excel,Xuất tháng hiện tại,Số dòng và tổng tiền khớp màn hình
+TC-EXP-02,CSV mở được trong Excel,Mở CSV có tên tiếng Việt,Không lỗi font
+TC-AIG-01,Lọc dữ liệu nhạy cảm,Câu hỏi chứa 0912345678 và email,"Prompt gửi đi có [SĐT], [EMAIL]; ai_logs đã lọc"
+TC-AIG-02,Timeout và thử lại,Giả lập Gemini chậm 30 giây,Thử lại 2 lần rồi báo bận; ai_logs timeout
+TC-AIG-03,Lỗi 429,Giả lập 429 hai lần rồi thành công,"Trả kết quả, retry_count 2"
+TC-AIG-04,Phản hồi sai định dạng,Giả lập JSON hỏng,"Thử lại một lần; còn sai thì báo lỗi, status invalid_format"
+TC-AIG-05,Giới hạn lượt,Gọi lượt thứ 21 trong giờ,429 RATE_LIMITED
+TC-AIG-06,Prompt không chứa bí mật,Quét mọi prompt trong test,"Không có JWT, API key, password_hash"
+TC-AIA-01,Tư vấn tai nghe,Câu hỏi mẫu tai nghe dưới 500.000,"Hai sản phẩm đúng, không có Sony, không bịa"
+TC-AIA-02,Không có hàng phù hợp,Hỏi laptop dưới 3 triệu,Nói rõ không có
+TC-AIA-03,Loại sản phẩm hết hàng,Sản phẩm khớp nhưng tồn 0,Không xuất hiện trong prompt
+TC-AIA-04,Chặn sản phẩm bịa,Giả lập AI nhắc SKU không có,Câu đó bị loại
+TC-AIA-05,Dự phòng khi AI lỗi,Tắt Gemini,Hiển thị danh sách lọc thô
+TC-AIA-06,Prompt injection trong mô tả,"Mô tả sản phẩm có ""bỏ qua chỉ dẫn""",Câu trả lời không đổi vai trò
+TC-AIR-01,Báo cáo đủ mục,Sinh báo cáo kỳ mẫu,Có đủ bốn mục
+TC-AIR-02,Số liệu khớp,So sánh con số báo cáo với JSON gửi,Khớp; lệch thì thử lại
+TC-AIR-03,Không gửi dữ liệu khách,Bắt payload gửi AI,"Không có tên, số điện thoại, mã hóa đơn"
+TC-AIQ-01,Câu hỏi bán chậm,"Hỏi ""Tháng này mặt hàng nào bán chậm?""",SQL SELECT trên view; câu trả lời liệt kê đúng 3 mặt hàng bán ít nhất
+TC-AIQ-02,Từ chối SQL ghi,Giả lập AI trả DELETE,"Không chạy, rejected_sql"
+TC-AIQ-03,Từ chối bảng gốc,Giả lập SELECT từ users,Không chạy
+TC-AIQ-04,Nhiều câu lệnh,SELECT 1; DROP TABLE x,Không chạy
+TC-AIQ-05,Kết nối chỉ đọc,Cố ghi qua kết nối AI,Lỗi readonly
+TC-AIQ-06,Giới hạn dòng và thời gian,SQL trả 10.000 dòng; SQL vòng lặp nặng,Cắt 200 dòng; dừng sau 5 giây
+TC-AIQ-07,Kết quả rỗng,Hỏi kỳ không có dữ liệu,Nói rõ không có dữ liệu
+TC-AIQ-08,Nhân viên bị cấm,Nhân viên gọi /api/ai/ask,403
