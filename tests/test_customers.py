@@ -43,6 +43,16 @@ def test_cannot_delete_customer_with_invoices(client, owner_h):
     assert r.status_code == 400 and "đã có hóa đơn" in r.text
 
 
+def test_cannot_delete_customer_with_loyalty_transactions(client, owner_h):
+    c = new_customer(client, owner_h)
+    r = client.post(f"/api/customers/{c['id']}/points", json={"points": 100, "reason": "Tặng điểm khai trương"},
+                    headers=owner_h)
+    assert r.status_code == 200, r.text
+    r = client.delete(f"/api/customers/{c['id']}", headers=owner_h)
+    assert r.status_code == 400 and "giao dịch tích điểm" in r.text
+    assert client.get(f"/api/customers/{c['id']}", headers=owner_h).status_code == 200
+
+
 # FR-CUS-01, BR-40
 def test_phone_must_be_10_digits_starting_with_0(client, owner_h):
     for phone in ("4358475875845", "901234567", "09012345678", "1901234567", "09012a4567", "+84901234567"):

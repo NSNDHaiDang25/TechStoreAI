@@ -43,6 +43,8 @@ const FROM_SERVER = {
   "Khách hàng không tồn tại": "Customer does not exist",
   "Khách hàng đã bị vô hiệu hóa": "The customer has been deactivated",
   "Khách hàng đã có hóa đơn, không thể xóa. Hãy vô hiệu hóa khách hàng": "The customer has invoices and cannot be deleted. Deactivate the customer instead",
+  "Khách hàng đã có giao dịch tích điểm, không thể xóa. Hãy vô hiệu hóa khách hàng": "The customer has loyalty point transactions and cannot be deleted. Deactivate the customer instead",
+  "Khách hàng đã có dữ liệu liên quan, không thể xóa. Hãy vô hiệu hóa khách hàng": "The customer has related records and cannot be deleted. Deactivate the customer instead",
   "Không thể khóa hoặc hạ vai trò quản trị viên cuối cùng": "Cannot lock or demote the last administrator",
   "Không thể tự hạ quyền hoặc khóa chính mình": "You cannot demote or lock your own account",
   "Không tìm thấy": "Not found",

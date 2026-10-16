@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.ai.service import strip_accents
 from app.database import get_db
-from app.models import PAID_STATES, Customer, CustomerTier, Invoice, User, Warranty, now
+from app.models import PAID_STATES, Customer, CustomerTier, Invoice, LoyaltyTransaction, User, Warranty, now
 from app.routers.invoices import mask_phone
 from app.schemas import CustomerIn, CustomerOut, PointsAdjustIn
 from app.security import ALL_STAFF, MANAGERS
@@ -177,6 +177,13 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db), _: User = D
     c = _get(db, customer_id)
     if db.scalar(select(func.count(Invoice.id)).where(Invoice.customer_id == customer_id)):
         raise HTTPException(400, "Khách hàng đã có hóa đơn, không thể xóa. Hãy vô hiệu hóa khách hàng")
+    # Lịch sử tích điểm (kể cả điều chỉnh thủ công) là chứng từ, xóa khách sẽ mất dấu vết nên cũng chặn
+    if db.scalar(select(func.count(LoyaltyTransaction.id)).where(LoyaltyTransaction.customer_id == customer_id)):
+        raise HTTPException(400, "Khách hàng đã có giao dịch tích điểm, không thể xóa. Hãy vô hiệu hóa khách hàng")
     db.delete(c)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # còn dữ liệu khác tham chiếu tới khách (bảo hành, đổi trả...)
+        db.rollback()
+        raise HTTPException(400, "Khách hàng đã có dữ liệu liên quan, không thể xóa. Hãy vô hiệu hóa khách hàng")
     return {"ok": True}

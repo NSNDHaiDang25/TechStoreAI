@@ -7,6 +7,7 @@ File này bổ sung các test case chưa có test riêng. Các test case còn l�
 import csv
 import io
 import threading
+import time
 from datetime import timedelta
 
 import httpx
@@ -635,7 +636,7 @@ def test_login_returns_8_hour_jwt_with_role(client):
     r = client.post("/api/auth/login", json={"username": "staff", "password": "staff123"})
     payload = decode_token(r.json()["access_token"])
     assert payload["role"] == "staff" and payload["sub"].isdigit()
-    hours = (payload["exp"] - now().timestamp()) / 3600
+    hours = (payload["exp"] - time.time()) / 3600  # exp là giây UTC; now() là giờ VN không múi giờ, .timestamp() sai trên máy UTC
     assert 7.9 < hours <= 8.01
 
 
