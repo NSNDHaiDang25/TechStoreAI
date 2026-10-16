@@ -211,8 +211,19 @@ Có `RESEND_API_KEY` thì hệ thống dùng Resend, ngược lại dùng SMTP. 
 ## Đổi sang PostgreSQL
 
 ```bash
-pip install "psycopg[binary]"
-# .env
+# .env (psycopg đã có trong requirements.txt)
 DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/sales
 python -m scripts.seed
 ```
+
+Với PostgreSQL, hỏi đáp dữ liệu (AI) dùng cách hệ thống tự tổng hợp số liệu thay vì chạy SQL do AI sinh, còn sao lưu / khôi phục trong ứng dụng không dùng được (dùng `pg_dump`).
+
+### Deploy Render gói miễn phí: phải dùng PostgreSQL bên ngoài
+
+Render gói miễn phí **xóa ổ đĩa mỗi lần container khởi động lại** (sau mỗi lần deploy và khi app tự ngủ sau khoảng 15 phút không ai truy cập). Dùng SQLite thì mọi thay đổi (mật khẩu mới, hóa đơn, sản phẩm...) mất hết và dữ liệu mẫu được tạo lại. Cách khắc phục:
+
+1. Tạo CSDL PostgreSQL miễn phí, ví dụ [Neon](https://neon.tech) (Postgres của Render bản miễn phí bị xóa sau 30 ngày).
+2. Lấy chuỗi kết nối dạng `postgresql://user:pass@host/dbname?sslmode=require`, đổi tiền tố thành `postgresql+psycopg://`.
+3. Trên Render, vào **Environment**, đặt `DATABASE_URL` bằng chuỗi đó rồi deploy lại.
+
+Lần khởi động đầu, container thấy CSDL chưa có tài khoản nào nên tự nạp dữ liệu mẫu (`python -m scripts.seed --if-empty`); các lần sau giữ nguyên dữ liệu.

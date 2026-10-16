@@ -4,7 +4,8 @@
 Mọi dữ liệu đi qua đúng service nghiệp vụ (phiếu nhập, bán hàng) nên tồn kho, serial, điểm, bảo hành luôn khớp.
 Tồn kho sau khi nạp bằng đúng cột "Tồn" của bảng A.3: phiếu nhập đầu kỳ = tồn mong muốn + số sẽ bán trong lịch sử.
 
-Chạy:  python -m scripts.seed          (xóa và tạo lại toàn bộ dữ liệu)
+Chạy:  python -m scripts.seed              (xóa và tạo lại toàn bộ dữ liệu)
+       python -m scripts.seed --if-empty   (chỉ nạp khi CSDL chưa có tài khoản nào, dùng khi container khởi động)
 Mật khẩu ban đầu lấy từ biến môi trường SEED_ADMIN_PASSWORD, SEED_OWNER_PASSWORD, SEED_STAFF_PASSWORD.
 """
 import calendar
@@ -14,6 +15,8 @@ import sys
 from collections import defaultdict
 from datetime import datetime, time, timedelta
 from pathlib import Path
+
+from sqlalchemy import func, inspect, select
 
 from app.database import Base, SessionLocal, engine, ensure_schema
 from app.models import Category, Customer, FaceProfile, Product, Promotion, Supplier, User, now
@@ -307,6 +310,18 @@ def run(seed: int = SEED) -> None:
         db.close()
 
 
+def has_data() -> bool:
+    """CSDL đã có tài khoản người dùng (đã nạp mẫu hoặc đang dùng thật)."""
+    if not inspect(engine).has_table(User.__tablename__):
+        return False
+    with SessionLocal() as db:
+        return db.scalar(select(func.count(User.id))) > 0
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")  # console Windows mặc định cp1252
-    run()
+    # --if-empty: dùng khi container khởi động, không xóa dữ liệu thật (SQLite trên volume hoặc PostgreSQL)
+    if "--if-empty" in sys.argv[1:] and has_data():
+        print("CSDL đã có dữ liệu, bỏ qua nạp dữ liệu mẫu.")
+    else:
+        run()

@@ -17,5 +17,6 @@ COPY scripts ./scripts
 RUN python -m scripts.download_face_models
 
 EXPOSE 8000
-# Lần đầu chạy: tự tạo dữ liệu mẫu nếu chưa có CSDL
-CMD ["sh", "-c", "[ -f data/sales.db ] || python -m scripts.seed; uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# Lần đầu chạy: tự tạo dữ liệu mẫu nếu CSDL chưa có tài khoản nào (SQLite hay PostgreSQL đều vậy).
+# Render gói miễn phí xóa ổ đĩa mỗi lần khởi động lại: đặt DATABASE_URL tới PostgreSQL để giữ dữ liệu.
+CMD ["sh", "-c", "python -m scripts.seed --if-empty && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
