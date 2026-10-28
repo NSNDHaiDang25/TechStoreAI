@@ -92,7 +92,7 @@
   .pos-cartbar .cb-icon { position: relative; display: grid; place-items: center; }
   .pos-cartbar .cb-icon .i { width: 22px; height: 22px; }
   .pos-cartbar .cb-count { position: absolute; top: -8px; right: -10px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--radius-pill);
-    background: var(--mint); color: var(--navy-900); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+    background: var(--mint); color: var(--mint-text); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
   .pos-cartbar .cb-text { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; line-height: 1.25; }
   .pos-cartbar .cb-text .small { opacity: .8; }
   .pos-cartbar .cb-total { font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

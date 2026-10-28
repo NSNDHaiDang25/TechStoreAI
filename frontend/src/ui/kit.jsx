@@ -32,12 +32,16 @@ export function ToastProvider({ children }) {
 // ---------------------------------------------------------------- Hộp thoại
 export function Modal({ title, onClose, children, footer, size = '' }) {
   const ref = useRef(null)
+  // Giữ onClose mới nhất trong ref: nơi gọi thường truyền hàm mũi tên viết thẳng, mỗi lần gõ phím
+  // là một hàm mới. Nếu để onClose trong mảng phụ thuộc, effect chạy lại và kéo con trỏ về ô đầu.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
+    const onKey = (e) => { if (e.key === 'Escape') closeRef.current?.() }
     document.addEventListener('keydown', onKey)
-    ref.current?.querySelector('input, select, textarea, button.primary')?.focus()
+    ref.current?.querySelector('input, select, textarea, button.primary')?.focus()  // chỉ một lần, lúc mở
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [])
   return (
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}>
       <div className={`modal ${size}`} role="dialog" aria-modal="true" aria-label={title} ref={ref}>

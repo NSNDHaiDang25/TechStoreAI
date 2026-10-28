@@ -15,7 +15,7 @@ function chartTheme() {
   const v = (n) => cs.getPropertyValue(n).trim()
   return {
     text: v('--text'), text2: v('--text-2'), muted: v('--muted'), surface: v('--surface'), border: v('--border-strong'),
-    line: v('--chart-line') || '#2563eb', grid: v('--chart-grid'), axis: v('--chart-axis'), other: v('--chart-other') || '#94a3b8',
+    line: v('--chart-line') || '#2563eb', fill: v('--chart-fill'), grid: v('--chart-grid'), axis: v('--chart-axis'), other: v('--chart-other') || '#94a3b8',
     series: [1, 2, 3, 4, 5, 6, 7, 8].map((i) => v(`--chart-${i}`)).filter(Boolean),
   }
 }
@@ -34,10 +34,12 @@ const tooltip = (tt, label) => ({
 export function seriesChart(type, labels, values, label = t('Doanh thu')) {
   return (tt) => {
     const c = tt.line
+    // Vùng tô dưới đường: dùng --chart-fill nếu giao diện có khai báo (tối: #7A2943), không thì nhạt dần từ màu đường
+    const f = tt.fill || c, top = tt.fill ? 0.7 : 0.24
     const fill = ({ chart: { ctx, chartArea: a } }) => {
-      if (!a) return alpha(c, 0.1)
+      if (!a) return alpha(f, top / 2)
       const g = ctx.createLinearGradient(0, a.top, 0, a.bottom)
-      g.addColorStop(0, alpha(c, 0.24)); g.addColorStop(1, alpha(c, 0))
+      g.addColorStop(0, alpha(f, top)); g.addColorStop(1, alpha(f, 0))
       return g
     }
     const ds = type === 'line'

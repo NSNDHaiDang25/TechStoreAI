@@ -68,7 +68,8 @@ const S = { token: null, user: null, ai: null, payCfg: null, charts: [], categor
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const money = (v) => (Number(v) || 0).toLocaleString('vi-VN') + ' ₫';
+//   (dấu cách không ngắt): số tiền và ký hiệu ₫ luôn nằm cùng một dòng
+const money = (v) => (Number(v) || 0).toLocaleString('vi-VN') + ' ₫';
 const num = (v) => (Number(v) || 0).toLocaleString('vi-VN');
 const fmtDate = (s) => (s ? new Date(s).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 const isoDate = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 10); };

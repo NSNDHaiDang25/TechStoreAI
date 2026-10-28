@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app import security
 from app.ai.client import AIResult, ChatReply, get_ai_client
+from app.config import settings
 from app.database import Base, get_db, make_engine
 from app.main import app
 from app.models import Category, Customer, Product, User
@@ -14,6 +15,13 @@ from app.security import hash_password
 
 # Mỗi test tạo 3 tài khoản: băm bcrypt ở mức thấp nhất (4) cho nhanh, thuật toán vẫn như khi chạy thật
 security.BCRYPT_ROUNDS = 4
+
+# Test không bao giờ gửi email thật. Máy lập trình viên có thể đã điền SMTP / Resend trong .env;
+# nếu để nguyên, các test về đăng ký và quên mật khẩu sẽ gửi mail ra ngoài rồi lỗi.
+settings.ADMIN_EMAIL = ""
+settings.RESEND_API_KEY = ""
+settings.SMTP_USER = ""
+settings.SMTP_PASSWORD = ""
 
 
 class FakeAI:

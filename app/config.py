@@ -1,4 +1,6 @@
+import logging
 import os
+import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -6,9 +8,16 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+# Những khóa từng được ghi sẵn trong mã nguồn và .env.example: ai đọc được repo cũng biết chúng,
+# nên dùng chúng nghĩa là người lạ tự ký được token quản trị rồi tải hoặc ghi đè toàn bộ dữ liệu.
+PUBLIC_SECRET_KEYS = {
+    "dev-secret-change-me-please-use-a-long-random-string",
+    "change-me-to-a-long-random-string",
+}
+
 
 class Settings:
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-change-me-please-use-a-long-random-string")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "").strip()
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
     # Giao diện đặt ở tên miền khác (GitHub Pages) được phép gọi API, cách nhau bởi dấu phẩy.
     # Ví dụ: https://nsndhaidang25.github.io. Để trống = chỉ giao diện do chính backend phục vụ.
@@ -59,6 +68,23 @@ class Settings:
 
 
 settings = Settings()
+
+# Khóa ký token đăng nhập: khóa công khai thì dừng hẳn, không chạy tiếp với lỗ hổng.
+if settings.SECRET_KEY in PUBLIC_SECRET_KEYS:
+    raise RuntimeError(
+        "SECRET_KEY đang là giá trị mẫu nằm công khai trong mã nguồn: ai đọc được repo cũng tạo được "
+        "token quản trị và tải về hoặc ghi đè toàn bộ dữ liệu.\n"
+        "Tạo khóa mới rồi đặt vào .env (hoặc Environment trên Render):\n"
+        '    python -c "import secrets; print(secrets.token_urlsafe(48))"'
+    )
+# Bỏ trống thì sinh khóa ngẫu nhiên để máy lập trình và test vẫn chạy được. Khóa đổi mỗi lần khởi động
+# nên mọi người phải đăng nhập lại: phiền vừa đủ để nhớ đặt khóa thật, nhưng không ai đoán được.
+if not settings.SECRET_KEY:
+    settings.SECRET_KEY = secrets.token_urlsafe(48)
+    logging.getLogger(__name__).warning(
+        "Chưa đặt SECRET_KEY: dùng khóa ngẫu nhiên tạm, khởi động lại là mọi người phải đăng nhập lại. "
+        "Đặt SECRET_KEY trong .env để phiên đăng nhập giữ được qua các lần khởi động."
+    )
 
 # Đường dẫn SQLite tương đối được tính theo thư mục gốc dự án, không theo thư mục đang chạy lệnh
 if settings.DATABASE_URL.startswith("sqlite:///./"):

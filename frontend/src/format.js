@@ -1,5 +1,6 @@
 import { locale, numLocale, t } from './i18n.js'
-export const money = (v) => (Number(v) || 0).toLocaleString(numLocale) + ' ₫'
+//   (dấu cách không ngắt): số tiền và ký hiệu ₫ luôn nằm cùng một dòng
+export const money = (v) => (Number(v) || 0).toLocaleString(numLocale) + ' ₫'
 export const num = (v) => (Number(v) || 0).toLocaleString(numLocale)
 export const fmtDateTime = (s) => (s ? new Date(s).toLocaleString(locale, {
   day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
