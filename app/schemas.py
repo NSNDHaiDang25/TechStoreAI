@@ -81,7 +81,6 @@ class UserOut(ORM):
     phone: str | None = None
     is_active: bool
     pending: bool = False
-    must_change_password: bool = False
     locked_until: datetime | None = None
     last_login_at: datetime | None = None
 

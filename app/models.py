@@ -44,7 +44,6 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Tự đăng ký ở màn hình đăng nhập: bị khóa và chờ quản trị viên duyệt (phân biệt với tài khoản bị khóa thường)
     pending: Mapped[bool] = mapped_column(Boolean, default=False)
-    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)  # FR-USR-02
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0)       # FR-AUT-03
     locked_until: Mapped[datetime | None] = mapped_column(DateTime)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)

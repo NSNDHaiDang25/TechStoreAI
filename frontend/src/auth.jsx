@@ -18,7 +18,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     // FR-AUT-09: token hết hạn thì về màn hình đăng nhập (giỏ hàng nháp vẫn được lưu ở server)
-    setAuthHandlers(logoutLocal, () => setUser((u) => (u ? { ...u, must_change_password: true } : u)))
+    setAuthHandlers(logoutLocal)
     refresh()
   }, [refresh, logoutLocal])
 

@@ -7,7 +7,7 @@ import Icon from '../ui/Icon.jsx'
 import { ConfirmDialog, ErrorBox, Loading, Modal, useLoad, useToast } from '../ui/kit.jsx'
 import { t } from '../i18n.js'
 
-export function ChangePasswordForm({ forced, onDone }) {
+export function ChangePasswordForm({ onDone }) {
   const toast = useToast()
   const [f, setF] = useState({ old_password: '', new_password: '', confirm: '' })
   const [err, setErr] = useState('')
@@ -24,7 +24,6 @@ export function ChangePasswordForm({ forced, onDone }) {
   }
   return (
     <form className="stack" onSubmit={submit}>
-      {forced && <p className="note mt-0">{t('Tài khoản mới hoặc vừa được đặt lại mật khẩu: bạn cần đổi mật khẩu trước khi sử dụng.')}</p>}
       <label>{t('Mật khẩu hiện tại')}<input type="password" required value={f.old_password} onChange={(e) => setF({ ...f, old_password: e.target.value })} /></label>
       <label>{t('Mật khẩu mới')}<input type="password" required value={f.new_password} placeholder={t('Tối thiểu 8 ký tự, có chữ và số')}
         onChange={(e) => setF({ ...f, new_password: e.target.value })} /></label>
@@ -32,22 +31,6 @@ export function ChangePasswordForm({ forced, onDone }) {
       <p className="error">{err}</p>
       <button className="btn primary" type="submit"><Icon name="key" />{t('Đổi mật khẩu')}</button>
     </form>
-  )
-}
-
-export function ForcedChange() {
-  const { refresh, logout } = useAuth()
-  return (
-    <section className="auth">
-      <main className="auth-main" style={{ margin: '0 auto' }}>
-        <div className="auth-card">
-          <div className="auth-card-brand"><span className="brand-mark"><Icon name="store" /></span>TechStoreAI</div>
-          <h2 className="auth-card-title">{t('Đổi mật khẩu')}</h2>
-          <ChangePasswordForm forced onDone={refresh} />
-          <button className="link-btn" onClick={logout}>{t('Đăng xuất')}</button>
-        </div>
-      </main>
-    </section>
   )
 }
 

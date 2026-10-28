@@ -19,7 +19,7 @@ function UserForm({ initial, onClose, onSaved }) {
     try {
       const body = { ...f, email: f.email.trim() || null, phone: f.phone.trim() || null }
       initial ? await api.put(`/users/${initial.id}`, body) : await api.post('/users', body)
-      toast(initial ? t('Đã cập nhật tài khoản') : t('Đã tạo tài khoản {0}. Người dùng phải đổi mật khẩu ở lần đăng nhập đầu', [f.username]), 'success')
+      toast(initial ? t('Đã cập nhật tài khoản') : t('Đã tạo tài khoản {0}', [f.username]), 'success')
       onSaved()
     } catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
   }
@@ -29,7 +29,7 @@ function UserForm({ initial, onClose, onSaved }) {
       <div className="form-grid">
         {!initial && <Field label={t('Tên đăng nhập')}><input value={f.username} onChange={set('username')} autoComplete="off" /></Field>}
         <Field label={t('Họ tên')}><input value={f.full_name} onChange={set('full_name')} /></Field>
-        {!initial && <Field label={t('Mật khẩu tạm')} hint={t('Tối thiểu 8 ký tự, có chữ và số')}><input type="text" value={f.password} onChange={set('password')} autoComplete="new-password" /></Field>}
+        {!initial && <Field label={t('Mật khẩu')} hint={t('Tối thiểu 8 ký tự, có chữ và số')}><input type="text" value={f.password} onChange={set('password')} autoComplete="new-password" /></Field>}
         <Field label={t('Vai trò')}><select value={f.role} onChange={set('role')}>
           {Object.entries(ROLE_VI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
         <Field label="Email" hint={t('Dùng để nhận mã khi quên mật khẩu')}><input type="email" value={f.email} onChange={set('email')} /></Field>
@@ -49,8 +49,8 @@ function ResetPassword({ u, onClose }) {
   }
   return (
     <Modal title={t('Đặt lại mật khẩu cho {0}', [u.username])} size="narrow" onClose={onClose}
-      footer={<button className="btn primary" disabled={pw.length < 8} onClick={save}><Icon name="key" />{t('Đặt mật khẩu tạm')}</button>}>
-      <Field label={t('Mật khẩu tạm')} hint={t('Người dùng phải đổi mật khẩu khi đăng nhập lại')}><input value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" /></Field>
+      footer={<button className="btn primary" disabled={pw.length < 8} onClick={save}><Icon name="key" />{t('Đặt lại mật khẩu')}</button>}>
+      <Field label={t('Mật khẩu mới')} hint={t('Tối thiểu 8 ký tự, có chữ và số')}><input value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" /></Field>
     </Modal>
   )
 }
@@ -90,8 +90,7 @@ export default function Users() {
                 <td className="strong">{u.username}{u.id === me.id && <span className="badge blue">{t('Bạn')}</span>}</td>
                 <td>{u.full_name}</td><td>{ROLE_VI[u.role]}</td>
                 <td className="small">{u.email}<div className="muted">{u.phone}</div></td>
-                <td>{!u.is_active ? <span className="badge red">{t('Đã khóa')}</span> : locked(u) ? <span className="badge yellow" title={t('Đến {0}', [fmtDateTime(u.locked_until)])}>{t('Khóa tạm')}</span> : <span className="badge green">{t('Hoạt động')}</span>}
-                  {u.must_change_password && <span className="badge">{t('Chờ đổi mật khẩu')}</span>}</td>
+                <td>{!u.is_active ? <span className="badge red">{t('Đã khóa')}</span> : locked(u) ? <span className="badge yellow" title={t('Đến {0}', [fmtDateTime(u.locked_until)])}>{t('Khóa tạm')}</span> : <span className="badge green">{t('Hoạt động')}</span>}</td>
                 <td className="small">{fmtDateTime(u.last_login_at) || '-'}</td>
                 <td className="right nowrap">
                   {locked(u) && <button className="btn sm" onClick={() => act(() => api.put(`/users/${u.id}`, { unlock: true }), t('Đã mở khóa {0}', [u.username]))}>{t('Mở khóa')}</button>}

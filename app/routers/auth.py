@@ -312,13 +312,12 @@ def face_delete(db: Session = Depends(get_db), user: User = Depends(ADMIN_OR_OWN
 
 @router.post("/auth/change-password")
 def change_password(data: ChangePasswordIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """FR-AUT-07: đổi mật khẩu khi biết mật khẩu cũ. Cũng dùng cho lần đăng nhập đầu (FR-USR-02)."""
+    """FR-AUT-07: đổi mật khẩu khi biết mật khẩu cũ."""
     if not verify_password(data.old_password, user.password_hash):
         raise HTTPException(400, "Mật khẩu hiện tại không đúng")
     if data.old_password == data.new_password:
         raise HTTPException(400, "Mật khẩu mới phải khác mật khẩu hiện tại")
     user.password_hash = hash_password(data.new_password)
-    user.must_change_password = False
     audit.log(db, user, "PASSWORD_CHANGE", "users", user.id)
     db.commit()
     return {"ok": True, "message": "Đã đổi mật khẩu"}
@@ -386,7 +385,6 @@ def reset_password(data: ResetPasswordIn, db: Session = Depends(get_db)):
             raise HTTPException(400, "Nhập sai mã quá nhiều lần, hãy yêu cầu mã mới")
         raise HTTPException(400, f"Mã xác nhận không đúng (còn {RESET_MAX_ATTEMPTS - reset.attempts} lần thử)")
     user.password_hash = hash_password(data.new_password)
-    user.must_change_password = False
     user.locked_until = None
     user.failed_login_count = 0
     reset.used = True
@@ -458,12 +456,12 @@ def _check_unique_email(db: Session, email: str | None, user_id: int | None = No
 
 @router.post("/users", response_model=UserOut, status_code=201)
 def create_user(data: UserCreate, db: Session = Depends(get_db), admin: User = Depends(ADMIN_ONLY)):
-    """FR-USR-01, 02: quản trị viên tạo tài khoản với mật khẩu tạm, người dùng phải đổi ở lần đăng nhập đầu."""
+    """FR-USR-01: quản trị viên tạo tài khoản."""
     if db.scalar(select(User).where(func.lower(User.username) == data.username.lower())):
         raise HTTPException(400, "Tên đăng nhập đã tồn tại")
     _check_unique_email(db, data.email)
     user = User(username=data.username, full_name=data.full_name, role=data.role, email=data.email, phone=data.phone,
-                password_hash=hash_password(data.password), must_change_password=True)
+                password_hash=hash_password(data.password))
     db.add(user)
     db.flush()
     audit.log(db, admin, "USER_CREATE", "users", user.id, new=_user_snapshot(user))
@@ -502,7 +500,6 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
         user.failed_login_count = 0
     if data.password:
         user.password_hash = hash_password(data.password)
-        user.must_change_password = True
     after = _user_snapshot(user)
     if before != after:
         action = "ROLE_CHANGE" if before["role"] != after["role"] else "USER_UPDATE"
@@ -514,17 +511,16 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
 @router.post("/users/{user_id}/reset-password")
 def admin_reset_password(user_id: int, data: AdminResetPasswordIn, db: Session = Depends(get_db),
                          admin: User = Depends(ADMIN_ONLY)):
-    """FR-USR-03: quản trị viên đặt mật khẩu tạm, người dùng phải đổi khi đăng nhập lại."""
+    """FR-USR-03: quản trị viên đặt lại mật khẩu cho người dùng."""
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(404, "Không tìm thấy người dùng")
     user.password_hash = hash_password(data.new_password)
-    user.must_change_password = True
     user.locked_until = None
     user.failed_login_count = 0
     audit.log(db, admin, "PASSWORD_RESET", "users", user.id)
     db.commit()
-    return {"ok": True, "message": f"Đã đặt mật khẩu tạm cho {user.username}"}
+    return {"ok": True, "message": f"Đã đặt lại mật khẩu cho {user.username}"}
 
 
 @router.delete("/users/{user_id}")

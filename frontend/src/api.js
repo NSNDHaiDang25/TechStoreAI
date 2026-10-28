@@ -25,8 +25,7 @@ export class ApiError extends Error {
 }
 
 let onUnauthorized = () => {}
-let onMustChangePassword = () => {}
-export function setAuthHandlers(unauth, mustChange) { onUnauthorized = unauth; onMustChangePassword = mustChange }
+export function setAuthHandlers(unauth) { onUnauthorized = unauth }
 
 function errorMessage(data, status) {
   if (!data) return t('Lỗi {0}', [status])
@@ -61,7 +60,6 @@ async function request(method, path, { params, body, form, raw } = {}) {
   if (!res.ok) {
     const message = errorMessage(data, res.status)
     if (res.status === 401 && path !== '/auth/login' && !path.startsWith('/auth/face-login')) onUnauthorized()
-    if (res.status === 403 && message.includes('đổi mật khẩu')) onMustChangePassword()
     throw new ApiError(res.status, t(message), data)  // dịch thông báo lỗi quen thuộc của backend
   }
   return data

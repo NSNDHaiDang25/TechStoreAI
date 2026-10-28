@@ -3,6 +3,7 @@ import { api } from '../api.js'
 import { useAuth } from '../auth.jsx'
 import { ROLE_VI } from '../format.js'
 import { ThemeToggle } from '../Shell.jsx'
+import BrandLogo from '../ui/BrandLogo.jsx'
 import FaceCamera from '../ui/FaceCamera.jsx'
 import Icon from '../ui/Icon.jsx'
 import LangToggle from '../ui/LangToggle.jsx'
@@ -157,7 +158,7 @@ export default function Login() {
       <aside className="auth-hero">
         <img className="auth-hero-img" src="/static/img/login-bg.webp" alt="" aria-hidden="true" />
         <div className="auth-hero-inner">
-          <div className="auth-logo"><span className="brand-mark"><Icon name="store" /></span>TechStoreAI</div>
+          <div className="auth-logo"><BrandLogo onDark />TechStoreAI</div>
           <div>
             <h1 className="auth-title">{t('Quản lý bán hàng')}<br /><span className="accent-text">{t('thiết bị điện tử')}</span></h1>
             <p className="auth-lead">{t('Bán hàng tại quầy, serial và bảo hành, đổi trả 24 giờ, khuyến mãi, tích điểm, nhập kho và báo cáo. Trợ lý AI tư vấn sản phẩm và phân tích doanh thu từ dữ liệu thật.')}</p>
@@ -172,7 +173,7 @@ export default function Login() {
           <div className="auth-top-actions"><LangToggle /><ThemeToggle /></div>
         </div>
         <form className="auth-card" onSubmit={submit}>
-          <div className="auth-card-brand"><span className="brand-mark"><Icon name="store" /></span>TechStoreAI</div>
+          <div className="auth-card-brand"><BrandLogo />TechStoreAI</div>
           <div>
             <h2 className="auth-card-title">{t('Chào mừng trở lại')}</h2>
             <p className="muted auth-card-sub">{t('Đăng nhập để tiếp tục vào hệ thống.')}</p>

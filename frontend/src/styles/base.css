@@ -411,6 +411,11 @@ html.theme-fade, html.theme-fade * { transition: background-color .3s ease, bord
 .sidebar .brand { border-bottom: 1px solid var(--border); margin-bottom: var(--space-1); }
 .brand-mark { width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--brand-gradient); color: var(--on-accent); display: grid; place-items: center; box-shadow: 0 4px 12px rgba(11, 42, 111, .28); }
 .brand-mark .i { width: 18px; height: 18px; }
+/* Biểu tượng logo (ảnh chữ PDL) cạnh tên TechStoreAI: bản sáng / tối đổi theo giao diện */
+.brand-logo { display: block; width: auto; height: 24px; flex-shrink: 0; }
+.brand-logo.theme-dark, :root[data-theme="dark"] .brand-logo.theme-light { display: none; }
+:root[data-theme="dark"] .brand-logo.theme-dark { display: block; }
+.auth-logo .brand-logo { height: 30px; }
 nav .group { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: var(--space-4) var(--space-5) var(--space-2); }
 nav a { display: flex; gap: var(--space-3); align-items: center; height: var(--control-h); padding: 0 var(--space-3); margin: 1px var(--space-3); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 nav a:hover, nav a:focus-visible { background: var(--hover); color: var(--text); text-decoration: none; }

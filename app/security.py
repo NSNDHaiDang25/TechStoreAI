@@ -84,10 +84,6 @@ def revoke_token(db: Session, payload: dict) -> None:
     db.query(RevokedToken).filter(RevokedToken.expires_at < now()).delete()
 
 
-# Người dùng phải đổi mật khẩu (tài khoản mới, vừa được đặt lại) chỉ gọi được các API này (FR-USR-02)
-PASSWORD_CHANGE_PATHS = {"/api/auth/change-password", "/api/auth/me", "/api/auth/logout"}
-
-
 def get_current_user(
     request: Request,
     creds: HTTPAuthorizationCredentials | None = Depends(bearer),
@@ -106,8 +102,6 @@ def get_current_user(
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise unauthorized
-    if user.must_change_password and request.url.path not in PASSWORD_CHANGE_PATHS:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Bạn cần đổi mật khẩu trước khi tiếp tục")
     request.state.token_payload = payload
     return user
 

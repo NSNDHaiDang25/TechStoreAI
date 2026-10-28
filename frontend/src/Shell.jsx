@@ -5,6 +5,7 @@ import { useAuth } from './auth.jsx'
 import { initialsOf, ROLE_VI } from './format.js'
 import { NAV } from './nav.js'
 import AIFab from './ui/AIFab.jsx'
+import BrandLogo from './ui/BrandLogo.jsx'
 import Icon from './ui/Icon.jsx'
 import LangToggle from './ui/LangToggle.jsx'
 import NotificationBell from './ui/NotificationBell.jsx'
@@ -45,7 +46,7 @@ export default function Shell({ title, children }) {
   return (
     <div className="layout">
       <aside className={`sidebar ${open ? 'open' : ''}`}>
-        <div className="brand"><span className="brand-mark"><Icon name="store" /></span>TechStoreAI</div>
+        <div className="brand"><BrandLogo />TechStoreAI</div>
         <nav>
           {NAV.map((g) => {
             const items = g.items.filter((i) => i.roles.includes(user.role))

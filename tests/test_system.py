@@ -48,13 +48,13 @@ def test_logout_revokes_token(client):
     assert client.get("/api/auth/me", headers=other).status_code == 200
 
 
-def test_new_user_must_change_password_first(client, admin_h):
+def test_new_user_can_work_without_changing_password(client, admin_h):
     r = client.post("/api/users", json={"username": "nv3", "full_name": "Nhân viên 3", "password": "TamThoi123",
                                         "role": "staff", "email": "nv3@example.com"}, headers=admin_h)
-    assert r.status_code == 201 and r.json()["must_change_password"] is True
+    assert r.status_code == 201
     h = _login(client, "nv3", "TamThoi123")
-    assert client.get("/api/products", headers=h).status_code == 403
-    assert client.get("/api/auth/me", headers=h).json()["must_change_password"] is True
+    assert client.get("/api/products", headers=h).status_code == 200  # không bị bắt đổi mật khẩu
+    # Đổi mật khẩu vẫn dùng được khi người dùng muốn
     weak = client.post("/api/auth/change-password", json={"old_password": "TamThoi123", "new_password": "abcdefgh"},
                        headers=h)
     assert weak.status_code == 422
@@ -76,12 +76,12 @@ def test_password_policy_on_create(client, admin_h):
 
 
 # FR-USR-03
-def test_admin_reset_password_forces_change(client, admin_h):
+def test_admin_reset_password(client, admin_h):
     staff_id = next(u["id"] for u in client.get("/api/users", headers=admin_h).json() if u["username"] == "staff")
     r = client.post(f"/api/users/{staff_id}/reset-password", json={"new_password": "DatLai2026"}, headers=admin_h)
     assert r.status_code == 200
     h = _login(client, "staff", "DatLai2026")
-    assert client.get("/api/invoices", headers=h).status_code == 403
+    assert client.get("/api/invoices", headers=h).status_code == 200  # dùng được ngay, không bị bắt đổi mật khẩu
 
 
 # FR-USR-03, FR-USR-05

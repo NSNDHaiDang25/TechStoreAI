@@ -35,7 +35,7 @@ Mở **http://localhost:8000** (giao diện React, bản build có sẵn trong `
 
 | Tài khoản | Mật khẩu | Vai trò |
 |---|---|---|
-| `admin` | `admin123` | Quản trị viên: người dùng, cấu hình kỹ thuật và AI, sao lưu, nhật ký. Không bán hàng, không xem giá vốn và doanh thu (phải đổi mật khẩu ở lần đăng nhập đầu) |
+| `admin` | `admin123` | Quản trị viên: người dùng, cấu hình kỹ thuật và AI, sao lưu, nhật ký. Không bán hàng, không xem giá vốn và doanh thu |
 | `chucuahang` | `owner123` | Chủ cửa hàng: quản lý, báo cáo, AI báo cáo/hỏi đáp |
 | `nhanvien01` | `staff123` | Nhân viên bán hàng: bán hàng, khách hàng, trợ lý AI, chatbot |
 

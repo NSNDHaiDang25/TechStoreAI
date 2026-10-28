@@ -52,7 +52,6 @@ ADDED_COLUMNS = {
     "users": {
         "pending": "BOOLEAN NOT NULL DEFAULT FALSE",
         "email": "VARCHAR(100)", "phone": "VARCHAR(15)",
-        "must_change_password": "BOOLEAN NOT NULL DEFAULT FALSE",
         "failed_login_count": "INTEGER NOT NULL DEFAULT 0",
         "locked_until": "DATETIME", "last_login_at": "DATETIME", "updated_at": "DATETIME",
     },

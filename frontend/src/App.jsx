@@ -6,7 +6,7 @@ import { useEnglishNames } from './i18n.js'
 import { NAV, homeFor } from './nav.js'
 import Shell from './Shell.jsx'
 import { Loading, ToastProvider } from './ui/kit.jsx'
-import Account, { ForcedChange } from './pages/Account.jsx'
+import Account from './pages/Account.jsx'
 import AIChat from './pages/AIChat.jsx'
 import AIConversations from './pages/AIConversations.jsx'
 import AILogs from './pages/AILogs.jsx'
@@ -71,7 +71,6 @@ function Routed() {
   useEnglishNames(user?.id, fetchEnglishNames)
   if (!ready) return <div className="center-screen"><Loading /></div>
   if (!user) return <Login />
-  if (user.must_change_password) return <ForcedChange />
   return (
     <Routes>
       {ROUTES.filter((r) => r.roles.includes(user.role)).map((r) => {

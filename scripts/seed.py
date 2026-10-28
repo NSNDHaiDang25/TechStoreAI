@@ -30,11 +30,11 @@ HISTORY_DAYS = 60
 HISTORY_INVOICES = 60
 FACE_SAMPLES = Path(__file__).resolve().parent / "face_samples"  # ảnh mẫu Face ID theo tên đăng nhập
 
-# Bảng A.1: tên đăng nhập, họ tên, vai trò, biến môi trường mật khẩu, mật khẩu mặc định, bắt đổi mật khẩu
+# Bảng A.1: tên đăng nhập, họ tên, vai trò, biến môi trường mật khẩu, mật khẩu mặc định
 USERS = [
-    ("admin", "Quản trị hệ thống", "admin", "SEED_ADMIN_PASSWORD", "admin123", True),
-    ("chucuahang", "Nguyễn Tất Phi", "owner", "SEED_OWNER_PASSWORD", "owner123", False),
-    ("nhanvien01", "Nguyễn Phạm Phương Lan", "staff", "SEED_STAFF_PASSWORD", "staff123", False),
+    ("admin", "Quản trị hệ thống", "admin", "SEED_ADMIN_PASSWORD", "admin123"),
+    ("chucuahang", "Nguyễn Tất Phi", "owner", "SEED_OWNER_PASSWORD", "owner123"),
+    ("nhanvien01", "Nguyễn Phạm Phương Lan", "staff", "SEED_STAFF_PASSWORD", "staff123"),
 ]
 
 # Bảng A.2: nhóm hàng, theo serial
@@ -189,8 +189,8 @@ def run(seed: int = SEED) -> None:
     db = SessionLocal()
     try:
         users = {}
-        for username, name, role, env_key, default, must_change in USERS:
-            users[role] = User(username=username, full_name=name, role=role, must_change_password=must_change,
+        for username, name, role, env_key, default in USERS:
+            users[role] = User(username=username, full_name=name, role=role,
                                password_hash=hash_password(_password(env_key, default)))
             db.add(users[role])
         owner, staff = users["owner"], users["staff"]
@@ -304,7 +304,7 @@ def run(seed: int = SEED) -> None:
             _enroll_faces(db, u)
         print(f"Đã tạo dữ liệu mẫu: {len(PRODUCTS)} sản phẩm, {len(customers) + len(FIXED_CUSTOMERS)} khách hàng, "
               f"{len(SUPPLIERS)} nhà cung cấp, {len(plans)} hóa đơn trong {HISTORY_DAYS} ngày.")
-        print("Tài khoản: " + ", ".join(f"{u}/{_password(e, d)}" for u, _, _, e, d, _ in USERS)
+        print("Tài khoản: " + ", ".join(f"{u}/{_password(e, d)}" for u, _, _, e, d in USERS)
               + " (admin phải đổi mật khẩu ở lần đăng nhập đầu)")
     finally:
         db.close()
