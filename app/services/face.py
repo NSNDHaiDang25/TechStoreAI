@@ -12,6 +12,7 @@ nghiêng tờ ảnh chỉ làm cả khuôn mặt hẹp lại đều nhau, mũi v
 """
 import hashlib
 import logging
+import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,9 @@ from pathlib import Path
 from app.config import settings
 
 log = logging.getLogger(__name__)
+# OpenCV 5 in cảnh báo vô hại "setPreferableTarget ... not supported by the new graph engine" khi nạp mô hình:
+# chỉ hiện lỗi thật (đặt trước khi import cv2 mới có tác dụng)
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
 _ZOO = "https://github.com/opencv/opencv_zoo/raw/main/models"
 MODELS = {

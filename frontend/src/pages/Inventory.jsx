@@ -1,27 +1,32 @@
 // Tồn kho: cảnh báo sắp hết, thẻ kho, báo cáo tồn (UC-38 đến UC-40, UC-43)
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { useAuth } from '../auth.jsx'
 import { MOVE_VI, daysAgo, fmtDateTime, money, num, today } from '../format.js'
 import Icon from '../ui/Icon.jsx'
 import { Empty, ErrorBox, Loading, Pager, Thumb, useLoad } from '../ui/kit.jsx'
 import { t } from '../i18n.js'
+import QuickRestock from './QuickRestock.jsx'
 
 function LowStock() {
-  const { data, loading } = useLoad(() => api.get('/products', { stock: 'low', status: 'active', size: 100 }), [])
+  const { data, loading, reload } = useLoad(() => api.get('/products', { stock: 'low', status: 'active', size: 100 }), [])
   const out = useLoad(() => api.get('/products', { stock: 'out', status: 'active', size: 100 }), [])
-  const rows = [...(out.data?.items || []), ...(data?.items || [])]
+  const outIds = new Set((out.data?.items || []).map((p) => p.id))  // hết hàng cũng nằm trong "sắp hết": không lặp
+  const rows = [...(out.data?.items || []), ...(data?.items || []).filter((p) => !outIds.has(p.id))]
+  const [restock, setRestock] = useState(null)  // null | 'all' | id sản phẩm nhập riêng
+  const done = () => { reload(); out.reload() }
   if (loading) return <Loading />
   return !rows.length ? <Empty icon="check" title={t('Không có sản phẩm sắp hết hàng')} /> : (<>
     <div className="row mb-3"><span className="muted small flex-1">{t('{0} sản phẩm cần nhập thêm', [rows.length])}</span>
-      <Link className="btn sm primary" to="/purchase-orders" state={{ quickRestock: true }}><Icon name="truck" />{t('Nhập hàng nhanh')}</Link></div>
+      <button className="btn sm primary" onClick={() => setRestock('all')}><Icon name="truck" />{t('Nhập hàng nhanh')}</button></div>
+    {restock && <QuickRestock productId={restock === 'all' ? undefined : restock} onClose={() => setRestock(null)} onDone={done} />}
     <div className="table-wrap"><table>
-      <thead><tr><th>{t('Sản phẩm')}</th><th className="right">{t('Tồn')}</th><th className="right">{t('Ngưỡng')}</th><th>{t('Tình trạng')}</th></tr></thead>
+      <thead><tr><th>{t('Sản phẩm')}</th><th className="right">{t('Tồn')}</th><th className="right">{t('Ngưỡng')}</th><th>{t('Tình trạng')}</th><th /></tr></thead>
       <tbody>{rows.map((p) => (
         <tr key={p.id}><td><div className="cell-product"><Thumb url={p.image_url} name={t(p.name)} size="sm" /><div><div className="strong">{t(p.name)}</div><div className="muted small">{p.code}</div></div></div></td>
           <td className="right strong">{p.stock}</td><td className="right muted">{p.min_stock}</td>
-          <td>{p.stock <= 0 ? <span className="badge red">{t('Hết hàng')}</span> : <span className="badge yellow">{t('Sắp hết hàng')}</span>}</td></tr>
+          <td>{p.stock <= 0 ? <span className="badge red">{t('Hết hàng')}</span> : <span className="badge yellow">{t('Sắp hết hàng')}</span>}</td>
+          <td className="right"><button className="btn sm" onClick={() => setRestock(p.id)} title={t('Nhập riêng sản phẩm này')}><Icon name="truck" />{t('Nhập')}</button></td></tr>
       ))}</tbody>
     </table></div>
   </>)

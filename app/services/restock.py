@@ -8,7 +8,7 @@ import math
 from collections import defaultdict
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import PAID_STATES, ImportItem, ImportReceipt, Invoice, InvoiceItem, Product, Supplier, User, now
@@ -21,7 +21,9 @@ NOTE = "Nhập hàng nhanh (hàng sắp hết)"
 
 
 def suggestions(db: Session, user: User) -> dict:
-    products = db.scalars(select(Product).where(Product.status == "active", Product.stock < Product.min_stock)
+    # Sắp hết (dưới mức tối thiểu) hoặc đã hết hàng (kể cả sản phẩm đặt mức tối thiểu 0)
+    products = db.scalars(select(Product).where(Product.status == "active",
+                                                or_(Product.stock < Product.min_stock, Product.stock <= 0))
                           .order_by(Product.stock, Product.name)).all()
     ids = [p.id for p in products]
     if not ids:

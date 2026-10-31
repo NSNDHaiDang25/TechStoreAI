@@ -1234,4 +1234,6 @@ export default {
   "Nhập kho: {0}": "Received: {0}",
   "Chi nhánh khác vừa nhập hàng": "Other branches received stock",
   "{0} phiếu nhập kho ở các chi nhánh trong 24 giờ qua": "{0} purchase orders received at other branches in the last 24 hours",
+  "Nhập hàng: {0}": "Restock: {0}",
+  "Nhập riêng sản phẩm này": "Restock this product only",
 }

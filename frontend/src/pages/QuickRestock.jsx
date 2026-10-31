@@ -1,4 +1,5 @@
 // Nhập hàng nhanh khi sắp hết: chọn sản phẩm sắp hết, sửa số lượng / nhà cung cấp / giá rồi lập phiếu nhập trong một bước.
+// productId: nhập riêng một sản phẩm (nút Nhập trên từng dòng ở trang Tồn kho).
 // Mỗi nhà cung cấp một phiếu. Nhân viên lập phiếu nháp; chủ cửa hàng có thể nhập kho ngay (trừ hàng quản lý serial).
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -9,7 +10,7 @@ import { t } from '../i18n.js'
 import Icon from '../ui/Icon.jsx'
 import { Empty, ErrorBox, Loading, Modal, MoneyInput, Thumb, useLoad, useToast } from '../ui/kit.jsx'
 
-export default function QuickRestock({ onClose, onDone }) {
+export default function QuickRestock({ onClose, onDone, productId }) {
   const { user } = useAuth()
   const owner = user.role === 'owner'
   const toast = useToast()
@@ -21,9 +22,11 @@ export default function QuickRestock({ onClose, onDone }) {
   useEffect(() => {
     if (!data) return
     const fallback = data.suppliers[0]?.id || ''
-    setRows(data.items.map((it) => ({ ...it, picked: it.suggested_qty > 0, quantity: it.suggested_qty || '',
+    const items = productId ? data.items.filter((it) => it.product_id === productId) : data.items
+    setRows(items.map((it) => ({ ...it, picked: !!productId || it.suggested_qty > 0, quantity: it.suggested_qty || '',
       supplier_id: it.supplier_id || fallback, unit_cost: it.unit_cost ?? '' })))
-  }, [data])
+  }, [data, productId])
+  const title = productId && rows?.length === 1 ? t('Nhập hàng: {0}', [t(rows[0].name)]) : t('Nhập hàng nhanh')
 
   const picked = (rows || []).filter((r) => r.picked)
   const orders = new Set(picked.map((r) => r.supplier_id)).size
@@ -53,7 +56,7 @@ export default function QuickRestock({ onClose, onDone }) {
 
   if (result) {
     return (
-      <Modal title={t('Nhập hàng nhanh')} onClose={onClose} footer={<button className="btn primary" onClick={onClose}>{t('Xong')}</button>}>
+      <Modal title={title} onClose={onClose} footer={<button className="btn primary" onClick={onClose}>{t('Xong')}</button>}>
         <div className="stack">
           {result.map((o) => (
             <div key={o.id} className="row">
@@ -73,7 +76,7 @@ export default function QuickRestock({ onClose, onDone }) {
   }
 
   return (
-    <Modal title={t('Nhập hàng nhanh')} onClose={onClose} size="xwide" footer={<>
+    <Modal title={title} onClose={onClose} size="xwide" footer={<>
       {rows?.length > 0 && <span className="muted small flex-1">
         {t('Đã chọn {0} sản phẩm · {1} phiếu nhập', [picked.length, orders])}{owner && total > 0 ? ` · ${money(total)}` : ''}</span>}
       <button className="btn" onClick={onClose}>{t('Đóng')}</button>
