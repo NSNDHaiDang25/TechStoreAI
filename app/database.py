@@ -18,6 +18,9 @@ def make_engine(url: str, **kwargs):
         db_path = url.replace("sqlite:///", "", 1)
         if db_path and db_path != ":memory:":
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    if url.startswith("postgresql+psycopg") and "-pooler." in url:
+        # Neon pooling (PgBouncer): tắt prepared statement để không lỗi khi kết nối bị dùng chung
+        connect_args["prepare_threshold"] = None
     engine = create_engine(url, connect_args=connect_args, **kwargs)
     if url.startswith("sqlite"):
         @event.listens_for(engine, "connect")

@@ -86,6 +86,18 @@ if not settings.SECRET_KEY:
         "Đặt SECRET_KEY trong .env để phiên đăng nhập giữ được qua các lần khởi động."
     )
 
+# Chuỗi kết nối Neon / Render dạng postgres:// hoặc postgresql://: tự dùng driver psycopg (đã có trong requirements)
+for _prefix in ("postgres://", "postgresql://"):
+    if settings.DATABASE_URL.startswith(_prefix):
+        settings.DATABASE_URL = "postgresql+psycopg://" + settings.DATABASE_URL[len(_prefix):]
+
+# Render gói miễn phí xóa ổ đĩa mỗi lần deploy / khởi động lại: SQLite trên đó sẽ mất hết dữ liệu
+if os.getenv("RENDER") and settings.DATABASE_URL.startswith("sqlite"):
+    logging.getLogger(__name__).warning(
+        "Đang chạy trên Render với SQLite: mọi dữ liệu (tài khoản, tồn kho, hóa đơn...) sẽ mất sau mỗi lần deploy "
+        "hoặc khi app ngủ. Đặt DATABASE_URL tới PostgreSQL (ví dụ Neon) trong mục Environment của Render."
+    )
+
 # Đường dẫn SQLite tương đối được tính theo thư mục gốc dự án, không theo thư mục đang chạy lệnh
 if settings.DATABASE_URL.startswith("sqlite:///./"):
     settings.DATABASE_URL = "sqlite:///" + str(BASE_DIR / settings.DATABASE_URL[len("sqlite:///./"):])
