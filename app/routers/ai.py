@@ -44,9 +44,13 @@ def ai_logs(feature: str | None = None, status: str | None = None, user_id: int 
 
 def _session_for(db: Session, user: User, kind: str, session_id: int | None, text: str) -> ChatSession:
     try:
-        return history.get_or_create(db, user, kind, session_id, text)
+        session = history.get_or_create(db, user, kind, session_id, text)
     except history.SessionNotFound:
         raise HTTPException(404, "Không tìm thấy cuộc trò chuyện")
+    # Ghi xong cuộc trò chuyện mới thì commit ngay để nhả khóa ghi trước khi chờ AI (có lúc vài chục giây).
+    # SQLite chỉ cho một giao dịch ghi một lúc: giữ khóa trong lúc chờ AI làm người khác ghi bị lỗi "database is locked".
+    db.commit()
+    return session
 
 
 def _assistant_turn(db: Session, client: GeminiClient, user: User, session: ChatSession, message: str, emit=None) -> dict:
