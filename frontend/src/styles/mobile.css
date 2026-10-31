@@ -186,7 +186,6 @@
   .cart-row > .btn.icon-only:last-child { grid-area: del; align-self: start; margin-top: -6px; margin-right: -6px; }
   .qty button { width: 40px; }
   .qty input { width: 44px; }
-  .discount-row { grid-template-columns: 1fr; }
   .pay-methods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pay-method { flex-direction: column; justify-content: center; gap: var(--space-1); height: 64px; padding: 0 var(--space-1); font-size: var(--fs-xs); white-space: normal; text-align: center; line-height: 1.2; }
   .cash-chips .chip { flex: 1 1 calc(50% - var(--space-1)); height: 40px; }

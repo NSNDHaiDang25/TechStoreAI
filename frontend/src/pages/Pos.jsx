@@ -418,14 +418,14 @@ export default function Pos() {
                   <div className="muted small">{money(l.product.sale_price)}{l.serial ? ` · ${l.serial.serial_no}` : ''}</div>
                   {pl?.line_promo > 0 && <div className="small text-success">{pl.promo_name}: -{money(pl.line_promo)}</div>}
                 </div>
-                {l.serial ? <span className="qty muted">x1</span> : (
+                {l.serial ? <span className="qty qty-fixed">x1</span> : (
                   <div className="qty">
                     <button className="btn sm icon-only" onClick={() => setQty(i, l.quantity - 1)} aria-label={t('Giảm')}><Icon name="minus" /></button>
                     <input value={l.quantity} inputMode="numeric" onChange={(e) => setQty(i, Number(e.target.value.replace(/\D/g, '')) || 1)} />
                     <button className="btn sm icon-only" onClick={() => setQty(i, l.quantity + 1)} aria-label={t('Tăng')}><Icon name="plus" /></button>
                   </div>
                 )}
-                <div className="right num strong" style={{ minWidth: 96 }}>{money(pl ? pl.line_total : l.product.sale_price * l.quantity)}</div>
+                <div className="right num strong">{money(pl ? pl.line_total : l.product.sale_price * l.quantity)}</div>
                 <button className="btn ghost sm icon-only" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))} aria-label={t('Bỏ dòng')}><Icon name="x" /></button>
               </div>
             )
@@ -435,21 +435,22 @@ export default function Pos() {
         {lines.length > 0 && <>
           <CrossSell productIds={[...new Set(lines.map((l) => l.product.id))]} onAdd={addByCode} />
           <div className="discount-row mt-3">
-            <div className="input-icon flex-1"><Icon name="tag" />
+            <div className="input-icon"><Icon name="tag" />
               <input placeholder={t('Mã voucher')} value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} />
             </div>
             {customer && (
-              <div className="input-icon flex-1"><Icon name="award" />
-                <input placeholder={t('Dùng điểm (tối đa {0})', [num(cart?.points_max || 0)])} value={points} inputMode="numeric"
-                  onChange={(e) => setPoints(e.target.value.replace(/\D/g, ''))} />
+              <div className="points-row">
+                <div className="input-icon flex-1"><Icon name="award" />
+                  <input placeholder={t('Dùng điểm (tối đa {0})', [num(cart?.points_max || 0)])} value={points} inputMode="numeric"
+                    aria-label={t('Dùng điểm')} onChange={(e) => setPoints(e.target.value.replace(/\D/g, ''))} />
+                </div>
+                {cart?.points_max > 0 && Number(points) !== cart.points_max && (
+                  <button type="button" className="btn" onClick={() => setPoints(String(cart.points_max))}
+                    title={`${t('Dùng tối đa')} ${num(cart.points_max)} ${t('điểm')}`}>{t('Dùng tối đa')}</button>
+                )}
               </div>
             )}
           </div>
-          {customer && cart?.points_max > 0 && Number(points) !== cart.points_max && (
-            <button type="button" className="btn sm ghost mt-2" onClick={() => setPoints(String(cart.points_max))}>
-              <Icon name="award" />{t('Dùng tối đa')} {num(cart.points_max)} {t('điểm')}
-            </button>
-          )}
           {cartErr && <p className="error mt-2">{cartErr}</p>}
           {cart && (
             <div className="totals mt-3">

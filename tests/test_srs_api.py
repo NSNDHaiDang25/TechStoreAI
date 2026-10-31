@@ -67,6 +67,48 @@ def test_import_missing_columns(client, owner_h):
     assert r.status_code == 400 and "sku" in r.json()["detail"]
 
 
+def xlsx(rows) -> bytes:
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    wb = Workbook()
+    for r in rows:
+        wb.active.append(r)
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_import_from_excel(client, owner_h):
+    data = xlsx([["sku", "ten", "nhom_hang", "gia_ban", "gia_von", "theo_serial", "ma_vach"],
+                 ["DT-XM-14", "Xiaomi 14", "Điện thoại", 15990000, 12000000.0, 1, "8938505970099"],
+                 [None, None, None, None, None, None, None],  # dòng trống bị bỏ qua
+                 ["PK001", "Trùng SKU", None, 100000, None, 0, None]])
+    files = {"file": ("san pham.xlsx", data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+    preview = client.post("/api/products/import", params={"dry_run": True}, headers=owner_h, files=files).json()
+    assert preview["to_create"] == 1 and preview["skipped"][0]["sku"] == "PK001"
+    r = client.post("/api/products/import", headers=owner_h, files=files)
+    assert r.status_code == 200 and r.json()["created"] == 1
+    p = client.get("/api/products", params={"q": "DT-XM-14"}, headers=owner_h).json()["items"][0]
+    assert p["sale_price"] == 15_990_000 and p["cost_price"] == 12_000_000 and p["track_serial"]
+
+
+def test_excel_template_can_be_imported_as_is(client, owner_h):
+    r = client.get("/api/products/import-template", params={"format": "xlsx"}, headers=owner_h)
+    assert r.status_code == 200 and r.content[:2] == b"PK"
+    files = {"file": ("mau.xlsx", r.content, "application/octet-stream")}
+    body = client.post("/api/products/import", params={"dry_run": True}, headers=owner_h, files=files).json()
+    assert body["errors"] == [] and body["preview"][0]["sku"] == "TN-SONY-02" and body["preview"][0]["sale_price"] == 8_490_000
+
+
+def test_import_rejects_broken_excel_and_xls(client, owner_h):
+    r = client.post("/api/products/import", headers=owner_h, files={"file": ("x.xlsx", b"PK\x03\x04hong", "application/zip")})
+    assert r.status_code == 400 and ".xlsx" in r.json()["detail"]
+    old = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 100
+    r = client.post("/api/products/import", headers=owner_h, files={"file": ("x.xls", old, "application/vnd.ms-excel")})
+    assert r.status_code == 400 and ".xls" in r.json()["detail"]
+
+
 # ---------------- /api/inventory/* ----------------
 # TC-STK-04 (SRS 11.3)
 def test_inventory_adjust_and_movements(client, owner_h, staff_h):

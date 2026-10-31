@@ -4,7 +4,7 @@ import { ApiError, api, openFile } from '../api.js'
 import { useAuth } from '../auth.jsx'
 import { SERIAL_STATUS, fmtDateTime, money, num } from '../format.js'
 import Icon from '../ui/Icon.jsx'
-import { Badge, Empty, ErrorBox, Field, Loading, Modal, MoneyInput, Pager, Thumb, useLoad, useToast } from '../ui/kit.jsx'
+import { Badge, Empty, ErrorBox, Field, FileDrop, Loading, Modal, MoneyInput, Pager, Thumb, useLoad, useToast } from '../ui/kit.jsx'
 import { t } from '../i18n.js'
 
 const STATUS = { active: [t('Đang bán'), 'green'], inactive: [t('Tạm ngừng'), 'yellow'], discontinued: [t('Ngừng kinh doanh'), 'red'] }
@@ -51,7 +51,8 @@ function ProductForm({ initial, cats, onClose, onSaved }) {
         {!initial && !f.track_serial && <Field label={t('Tồn đầu kỳ')}><input value={f.stock} onChange={set('stock')} inputMode="numeric" /></Field>}
         <Field label={t('Trạng thái')}><select value={f.status} onChange={set('status')}>{Object.entries(STATUS).map(([k, [v]]) => <option key={k} value={k}>{v}</option>)}</select></Field>
         <label className="checkbox"><input type="checkbox" checked={!!f.track_serial} onChange={set('track_serial')} />{t('Quản lý theo serial / IMEI (tồn kho nhập qua phiếu nhập kèm serial)')}</label>
-        <Field label={t('Ảnh sản phẩm')}><input type="file" accept="image/*" onChange={(e) => setFile(e.target.files[0])} /></Field>
+        <Field label={t('Ảnh sản phẩm')}><FileDrop file={file} onFile={setFile} accept="image/jpeg,image/png,image/webp" icon="image" fileIcon="image"
+          title={t('Chọn ảnh hoặc kéo thả vào đây')} hint={t('JPG, PNG, WebP, tối đa 5 MB')} /></Field>
         <Field label={t('Mô tả, thông số')} full><textarea rows={3} value={f.description || ''} onChange={set('description')} /></Field>
       </div>
     </Modal>
@@ -157,14 +158,20 @@ function ImportDialog({ onClose, onDone }) {
   }
   const ok = res && !res.errors.length && res.to_create > 0
   return (
-    <Modal title={t('Nhập sản phẩm từ CSV')} size="wide" onClose={onClose} footer={<>
+    <Modal title={t('Nhập sản phẩm từ Excel')} size="wide" onClose={onClose} footer={<>
       <button className="btn" disabled={!file || busy} onClick={() => send(true)}><Icon name="eye" />{t('Kiểm tra tệp')}</button>
       <button className="btn primary" disabled={!ok || busy} onClick={() => send(false)}><Icon name="upload" />{t('Nhập')} {ok ? t('{0} sản phẩm', [res.to_create]) : ''}</button>
     </>}>
       <p className="mt-0">{t('Điền tệp theo mẫu (cột bắt buộc:')} <code>sku</code>, <code>ten</code>, <code>gia_ban</code>{t('). Bỏ trống VAT, bảo hành thì lấy theo nhóm hàng; nhóm hàng chưa có sẽ được tạo mới. SKU đã có trong hệ thống sẽ được bỏ qua. Tồn đầu kỳ nhập bằng phiếu nhập.')}</p>
-      <div className="row mb-4" style={{ flexWrap: 'wrap' }}>
-        <button className="btn sm" onClick={() => openFile('/products/import-template', null, 'mau_nhap_san_pham.csv')}><Icon name="download" />{t('Tải tệp mẫu')}</button>
-        <input type="file" accept=".csv,text/csv" onChange={(e) => { setFile(e.target.files?.[0] || null); setRes(null) }} />
+      <div className="import-pick mb-4">
+        <FileDrop file={file} onFile={(f) => { setFile(f); setRes(null) }} fileIcon="file"
+          accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+          title={t('Chọn tệp Excel hoặc kéo thả vào đây')} hint={t('Tệp .xlsx (Excel) hoặc .csv, tối đa 5 MB và 5.000 dòng')} />
+        <div className="import-templates">
+          <span className="muted small">{t('Tải tệp mẫu:')}</span>
+          <button className="btn sm" onClick={() => openFile('/products/import-template', { format: 'xlsx' }, 'mau_nhap_san_pham.xlsx')}><Icon name="download" />Excel</button>
+          <button className="btn sm ghost" onClick={() => openFile('/products/import-template', null, 'mau_nhap_san_pham.csv')}><Icon name="download" />CSV</button>
+        </div>
       </div>
       {res && <>
         <div className="row mb-4" style={{ flexWrap: 'wrap' }}>
@@ -217,7 +224,7 @@ export default function Products() {
         <label>{t('đến')}<input value={f.max_price} onChange={set('max_price')} inputMode="numeric" style={{ width: 110 }} /></label>
         {owner && <div className="actions">
           <button className="btn" onClick={() => setDialog({ type: 'cats' })}><Icon name="tag" />{t('Nhóm hàng')}</button>
-          <button className="btn" onClick={() => setDialog({ type: 'import' })}><Icon name="upload" />{t('Nhập CSV')}</button>
+          <button className="btn" onClick={() => setDialog({ type: 'import' })}><Icon name="upload" />{t('Nhập từ Excel')}</button>
           <button className="btn primary" onClick={() => setDialog({ type: 'form' })}><Icon name="plus" />{t('Thêm sản phẩm')}</button>
         </div>}
       </div>

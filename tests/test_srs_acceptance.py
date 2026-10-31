@@ -595,6 +595,14 @@ def test_ai_report_numbers_must_match(client, staff_h, owner_h, fake_ai, sample,
     assert db.scalar(select(AILog.status).order_by(AILog.id.desc())) == "invalid_format"
 
 
+def test_report_numbers_ignore_digits_in_product_names():
+    """Số trong tên sản phẩm ('Pin Xiaomi 10000mAh') không bị coi là số tiền bịa; số tiền sai vẫn bị bắt."""
+    from app.ai.service import report_number_problems
+    ctx = {"revenue": 85_384_000, "slow_products": [{"name": "Pin dự phòng Xiaomi 10000mAh", "stock": 16}]}
+    assert report_number_problems("Doanh thu 85.384.000 ₫. Bán chậm: Pin dự phòng Xiaomi 10000mAh (tồn 16)", ctx) == []
+    assert report_number_problems("Pin dự phòng Xiaomi 10000mAh lãi 12.345.678 ₫", ctx) == ["12.345.678"]
+
+
 def test_ai_report_payload_has_no_customer_or_invoice(client, staff_h, owner_h, fake_ai, sample):
     """TC-AIR-03: payload gửi AI không có tên, số điện thoại khách, mã hóa đơn."""
     inv = checkout_sample(client, staff_h, sample)

@@ -6,7 +6,7 @@ import { initialsOf, ROLE_VI } from './format.js'
 import { NAV } from './nav.js'
 import AIFab from './ui/AIFab.jsx'
 import BrandLogo from './ui/BrandLogo.jsx'
-import Icon from './ui/Icon.jsx'
+import Icon, { GradientIcon } from './ui/Icon.jsx'
 import LangToggle from './ui/LangToggle.jsx'
 import NotificationBell from './ui/NotificationBell.jsx'
 import { t } from './i18n.js'
@@ -22,7 +22,8 @@ function ThemeToggle() {
   return (
     <button className="btn ghost icon-only theme-toggle" onClick={toggle} type="button"
       title={theme === 'dark' ? t('Giao diện sáng') : t('Giao diện tối')} aria-label={t('Đổi giao diện sáng tối')}>
-      <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+      {/* Icon cho biết giao diện đang dùng: tối = mặt trăng gradient #0575E6 -> #00F260, sáng = mặt trời */}
+      {theme === 'dark' ? <GradientIcon name="moon" from="#0575e6" to="#00f260" /> : <Icon name="sun" />}
     </button>
   )
 }

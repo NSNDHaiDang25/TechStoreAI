@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 import { useAuth } from '../auth.jsx'
 import { initialsOf } from '../format.js'
-import { AiTurn, CFG, readStored, replyMeta, storeKey, writeStored } from '../pages/AIChat.jsx'
+import { AiTurn, askAI, CFG, PendingTurn, readStored, replyMeta, storeKey, writeStored } from '../pages/AIChat.jsx'
 import Icon from './Icon.jsx'
 import { useToast } from './kit.jsx'
 import { t } from '../i18n.js'
@@ -42,6 +42,7 @@ export default function AIFab({ pageTitle }) {
   const [session, setSession] = useState({ id: null, messages: [] })
   const [loading, setLoading] = useState(false)
   const [pending, setPending] = useState(false)
+  const [draft, setDraft] = useState(null)  // câu trả lời đang được viết (trả theo luồng)
   const [text, setText] = useState('')
   const btn = useRef(null)
   const pop = useRef(null)
@@ -122,7 +123,7 @@ export default function AIFab({ pageTitle }) {
   useEffect(() => {
     const el = scroller.current
     if (el) el.scrollTop = session.messages.length ? el.scrollHeight : 0  // màn hình chào đọc từ trên xuống
-  }, [session.messages.length, pending, loading])
+  }, [session.messages.length, pending, loading, draft])
 
   const onPointerDown = (e) => {
     if (e.button !== 0) return
@@ -174,7 +175,7 @@ export default function AIFab({ pageTitle }) {
     setPending(true)
     setSession((s) => ({ ...s, messages: [...s.messages, { role: 'user', content: q, created_at: new Date().toISOString() }] }))
     try {
-      const res = await api.post(cfg.endpoint, { ...cfg.body(q), session_id: session.id })
+      const res = await askAI(cfg, { ...cfg.body(q), session_id: session.id }, undefined, setDraft)
       setSession((s) => ({ id: res.session_id,
         messages: [...s.messages, { id: res.message_id, role: 'assistant', content: res.answer, meta: replyMeta(res), created_at: new Date().toISOString() }] }))
       writeStored(key, res.session_id)
@@ -182,6 +183,7 @@ export default function AIFab({ pageTitle }) {
       setSession((s) => ({ ...s, messages: [...s.messages, { role: 'assistant', content: e.message, error: true }] }))
     } finally {
       setPending(false)
+      setDraft(null)
       input.current?.focus()
     }
   }
@@ -223,10 +225,7 @@ export default function AIFab({ pageTitle }) {
               ) : session.messages.map((m, i) => (m.role === 'user' ? (
                 <div key={m.id || `u${i}`} className="turn-user"><div className="bubble">{m.content}</div><div className="avatar">{initialsOf(user.full_name)}</div></div>
               ) : <AiTurn key={m.id || `a${i}`} m={m} cfg={cfg} onCart={addToCart} onCopy={copy} />))}
-              {pending && (
-                <div className="turn-ai is-typing"><div className="ai-avatar"><Icon name="sparkles" /></div>
-                  <div className="body"><div className="typing"><span /><span /><span /></div></div></div>
-              )}
+              {pending && <PendingTurn cfg={cfg} draft={draft} showName={false} />}
             </div>
           </div>
           <form className="ai-pop-composer" onSubmit={(e) => { e.preventDefault(); send(text) }}>

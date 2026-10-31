@@ -54,7 +54,9 @@ ADDED_COLUMNS = {
         "email": "VARCHAR(100)", "phone": "VARCHAR(15)",
         "failed_login_count": "INTEGER NOT NULL DEFAULT 0",
         "locked_until": "DATETIME", "last_login_at": "DATETIME", "updated_at": "DATETIME",
+        "branch_id": "INTEGER REFERENCES branches(id)",
     },
+    "audit_logs": {"branch_id": "INTEGER REFERENCES branches(id)"},
     "categories": {
         "default_vat_rate": "INTEGER NOT NULL DEFAULT 10",
         "default_warranty_months": "INTEGER NOT NULL DEFAULT 12",
@@ -112,10 +114,21 @@ DATA_MIGRATIONS = {
 }
 
 
+# Cột đã bỏ khỏi model. CSDL cũ vẫn còn cột (NOT NULL, không có mặc định) nên INSERT mới bị từ chối: xóa đi.
+DROPPED_COLUMNS = {
+    "users": ["must_change_password"],  # bỏ bắt đổi mật khẩu lần đầu
+}
+
+
 def ensure_schema(bind) -> None:
     Base.metadata.create_all(bind)
     inspector = inspect(bind)
     with bind.begin() as conn:
+        for table, columns in DROPPED_COLUMNS.items():
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            for name in columns:
+                if name in existing:
+                    conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {name}"))
         for table, columns in ADDED_COLUMNS.items():
             existing = {c["name"] for c in inspector.get_columns(table)}
             for name, ddl in columns.items():

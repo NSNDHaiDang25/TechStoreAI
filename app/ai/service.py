@@ -456,6 +456,18 @@ def _numbers_in(value) -> set[int]:
     return set()
 
 
+def _names_with_digits(value) -> set[str]:
+    """Các chuỗi trong dữ liệu có chứa chữ số (tên sản phẩm như 'Pin Xiaomi 10000mAh')."""
+    if isinstance(value, str):
+        has_text = len(value) >= 4 and re.search(r"[^\W\d_]", value)  # bỏ qua chuỗi chỉ toàn số
+        return {value} if has_text and re.search(r"\d", value) else set()
+    if isinstance(value, dict):
+        return set().union(set(), *(_names_with_digits(v) for v in value.values()))
+    if isinstance(value, (list, tuple)):
+        return set().union(set(), *(_names_with_digits(v) for v in value))
+    return set()
+
+
 _MONEY_TOKEN = re.compile(r"(?<![\d.,])(\d{1,3}(?:\.\d{3})+|\d{5,})(?![\d])|(\d+(?:,\d+)?)\s*(triệu|tỷ)", re.I)
 
 
@@ -463,7 +475,10 @@ def report_number_problems(markdown: str, ctx: dict) -> list[str]:
     """FR-AIR-04: các con số tiền trong báo cáo phải có trong dữ liệu đã gửi. Trả về danh sách số không khớp.
     Chỉ kiểm tra số tiền (từ 10.000 trở lên hoặc dạng 'x triệu / x tỷ'); số lượng nhỏ là khuyến nghị của AI."""
     allowed = {abs(n) for n in _numbers_in(ctx)}
-    text = re.sub(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}", " ", markdown)  # bỏ ngày tháng
+    text = markdown
+    for name in sorted(_names_with_digits(ctx), key=len, reverse=True):  # số trong tên sản phẩm không phải số tiền
+        text = re.sub(re.escape(name), " ", text, flags=re.I)
+    text = re.sub(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}", " ", text)  # bỏ ngày tháng
     bad = []
     for m in _MONEY_TOKEN.finditer(text):
         if m.group(1):

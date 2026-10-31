@@ -1,6 +1,6 @@
-"""Nhập danh mục sản phẩm từ tệp CSV (SRS 7.7, bảng 8.5 POST /api/products/import, NFR-SEC-10).
+"""Nhập danh mục sản phẩm từ tệp Excel (.xlsx) hoặc CSV (SRS 7.7, bảng 8.5 POST /api/products/import, NFR-SEC-10).
 
-Quy trình: tải mẫu CSV -> điền -> tải lên với dry_run=true để xem trước -> tải lên lần nữa để nhập thật.
+Quy trình: tải mẫu -> điền -> tải lên với dry_run=true để xem trước -> tải lên lần nữa để nhập thật.
 Nhập theo kiểu "tất cả hoặc không": chỉ cần một dòng lỗi là không dòng nào được ghi, tránh nhập dở dang.
 SKU đã có trong hệ thống được bỏ qua (sửa giá, thông tin ở màn hình Sản phẩm để có audit log đổi giá).
 Tồn đầu kỳ không nhập ở đây mà bằng một phiếu nhập có nhà cung cấp "Tồn đầu kỳ" (SRS 7.7).
@@ -8,6 +8,8 @@ Tồn đầu kỳ không nhập ở đây mà bằng một phiếu nhập có nh
 import csv
 import io
 import re
+import zipfile
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
@@ -21,7 +23,7 @@ from app.routers.catalog import _apply_category_defaults
 from app.schemas import ProductIn
 from app.security import MANAGERS
 from app.services import audit
-from app.services.export import to_csv
+from app.services.export import MEDIA, to_csv
 
 router = APIRouter(prefix="/api", tags=["catalog"])
 
@@ -60,16 +62,111 @@ ALIASES = {
 INT_FIELDS = {"sale_price", "cost_price", "vat_rate", "warranty_months", "min_stock"}
 
 
+# Giải thích từng cột, in ở trang "Hướng dẫn" của tệp mẫu Excel
+COLUMN_HELP = {
+    "sku": "Mã sản phẩm, không trùng. SKU đã có trong hệ thống sẽ được bỏ qua",
+    "ma_vach": "Mã vạch EAN/UPC (nếu có), không trùng",
+    "ten": "Tên sản phẩm",
+    "nhom_hang": "Tên nhóm hàng. Nhóm chưa có sẽ được tạo mới",
+    "hang": "Thương hiệu",
+    "gia_ban": "Giá bán (đồng), lớn hơn 0",
+    "gia_von": "Giá vốn (đồng)",
+    "vat": "Thuế suất VAT %. Bỏ trống: lấy theo nhóm hàng",
+    "bao_hanh_thang": "Số tháng bảo hành. Bỏ trống: lấy theo nhóm hàng",
+    "ton_toi_thieu": "Tồn tối thiểu để cảnh báo sắp hết",
+    "theo_serial": "1 = quản lý theo số serial / IMEI, 0 = không",
+    "mo_ta": "Mô tả ngắn",
+}
+
+
+def _xlsx_template() -> bytes:
+    """Tệp mẫu Excel: trang "San pham" (dòng tiêu đề + 1 dòng ví dụ) và trang "Huong dan" giải thích các cột."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "San pham"
+    ws.append([c[0] for c in COLUMNS])
+    ws.append([int(c[3]) if c[1] in INT_FIELDS or c[1] == "track_serial" else c[3] for c in COLUMNS])
+    for cell, col in zip(ws[1], COLUMNS):
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="D4145A" if col[2] else "2563EB")  # cột bắt buộc tô hồng
+        ws.column_dimensions[cell.column_letter].width = max(14, len(str(col[3])) + 4)
+    for cell in ws[2]:
+        if isinstance(cell.value, int) and cell.value >= 1000:
+            cell.number_format = "#,##0"
+    ws.cell(row=2, column=2).number_format = "@"  # mã vạch giữ dạng chữ, không thành số mũ
+    ws.freeze_panes = "A2"
+    guide = wb.create_sheet("Huong dan")
+    guide.append(["Cột", "Bắt buộc", "Ý nghĩa"])
+    for cell in guide[1]:
+        cell.font = Font(bold=True)
+    for name, _, required, _ in COLUMNS:
+        guide.append([name, "Có" if required else "", COLUMN_HELP[name]])
+    guide.append([])
+    guide.append(["Lưu ý", "", "Giữ nguyên dòng tiêu đề. Chỉ trang đầu tiên được đọc. Tồn đầu kỳ nhập bằng phiếu nhập kho."])
+    guide.column_dimensions["A"].width = 18
+    guide.column_dimensions["C"].width = 80
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 @router.get("/products/import-template")
-def import_template(_: User = Depends(MANAGERS)):
+def import_template(format: str = Query("csv", pattern="^(csv|xlsx)$"), _: User = Depends(MANAGERS)):
+    if format == "xlsx":
+        return Response(_xlsx_template(), media_type=MEDIA["xlsx"],
+                        headers={"Content-Disposition": 'attachment; filename="mau_nhap_san_pham.xlsx"'})
     content = to_csv([c[0] for c in COLUMNS], [[c[3] for c in COLUMNS]])
     return Response(content, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="mau_nhap_san_pham.csv"'})
 
 
+def _cell(v) -> str:
+    """Giá trị ô Excel thành chuỗi như khi gõ: 8490000.0 -> '8490000', ngày -> 'dd/mm/yyyy'."""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "1" if v else "0"
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    if isinstance(v, (datetime, date)):
+        return v.strftime("%d/%m/%Y")
+    return str(v).strip()
+
+
+def _xlsx_rows(data: bytes) -> list[list[str]]:
+    """Đọc trang đầu tiên của tệp .xlsx (giá trị đã tính của công thức)."""
+    from openpyxl import load_workbook
+
+    try:
+        wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except (zipfile.BadZipFile, KeyError, ValueError, OSError):
+        raise HTTPException(400, "Không đọc được tệp Excel. Hãy lưu lại dưới dạng .xlsx (Excel Workbook)")
+    try:
+        rows = []
+        for r in wb.worksheets[0].iter_rows(values_only=True):
+            if len(rows) > MAX_ROWS + 1:
+                break  # quá giới hạn: parse_table báo lỗi, không đọc tiếp
+            rows.append([_cell(v) for v in r])
+        return rows
+    finally:
+        wb.close()
+
+
+def _table(data: bytes, filename: str | None) -> list[list[str]]:
+    """Bảng dữ liệu từ tệp tải lên. Loại tệp xác định bằng nội dung (NFR-SEC-10), không tin đuôi tên tệp."""
+    if data[:4] == b"PK\x03\x04":  # .xlsx là tệp zip
+        return _xlsx_rows(data)
+    if data[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":  # Excel 97-2003 (.xls)
+        raise HTTPException(400, "Tệp .xls (Excel 97-2003) chưa được hỗ trợ. Hãy mở bằng Excel và lưu lại dạng .xlsx")
+    return _csv_rows(_decode(data))
+
+
 def _decode(data: bytes) -> str:
     if b"\x00" in data[:4096]:
-        raise HTTPException(400, "Tệp không phải CSV dạng văn bản")  # kiểm tra loại tệp bằng nội dung
+        raise HTTPException(400, "Tệp không phải Excel (.xlsx) hoặc CSV")  # kiểm tra loại tệp bằng nội dung
     for enc in ("utf-8-sig", "cp1258", "cp1252"):
         try:
             return data.decode(enc)
@@ -88,14 +185,22 @@ def _number(raw: str) -> int | None:
     return int(round(float(s.replace(",", "."))))
 
 
-def parse_rows(text: str) -> tuple[list[dict], list[dict]]:
+def _csv_rows(text: str) -> list[list[str]]:
     sample = text[:2048]
     try:
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
     except csv.Error:
         dialect = csv.excel
-    reader = csv.reader(io.StringIO(text), dialect)
-    rows = [r for r in reader if any(c.strip() for c in r)]
+    return list(csv.reader(io.StringIO(text), dialect))
+
+
+def parse_rows(text: str) -> tuple[list[dict], list[dict]]:
+    return parse_table(_csv_rows(text))
+
+
+def parse_table(table: list[list[str]]) -> tuple[list[dict], list[dict]]:
+    """Dòng đầu là tiêu đề cột. Trả về (dòng hợp lệ, dòng lỗi); số dòng tính như trong tệp (tiêu đề là dòng 1)."""
+    rows = [r for r in table if any(c.strip() for c in r)]
     if not rows:
         raise HTTPException(400, "Tệp rỗng")
     header = [ALIASES.get(h.strip().lower()) for h in rows[0]]
@@ -132,7 +237,7 @@ async def import_products(file: UploadFile = File(...), dry_run: bool = Query(Fa
     data = await file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise HTTPException(400, "Tệp quá 5 MB")
-    good, errors = parse_rows(_decode(data))
+    good, errors = parse_table(_table(data, file.filename))
 
     # Trùng SKU / mã vạch trong tệp và với dữ liệu đã có
     existing_codes = {c.upper() for c in db.scalars(select(Product.code))}

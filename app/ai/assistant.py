@@ -72,7 +72,11 @@ def _cards(db: Session, answer: str, allowed: set[str]) -> list[dict]:
     return [_product_dict(p) for p in cards[:MAX_CARDS]]
 
 
-def reply(db: Session, client: GeminiClient, user: User, message: str, history: list[dict] | None = None) -> dict:
+def reply(db: Session, client: GeminiClient, user: User, message: str, history: list[dict] | None = None,
+          emit=None) -> dict:
+    """emit: hàm nhận sự kiện tiến trình để giao diện hiện dần câu trả lời:
+    {"type": "text", "text": đoạn chữ mới}, {"type": "reset"} (bỏ phần chữ đã hiện, AI viết lại),
+    {"type": "tool", "name", "label"} (đang tra cứu dữ liệu)."""
     message = clean_input(message)
     if not client.enabled:
         return {**fallback(db, user, message), "source": "fallback",
@@ -84,7 +88,7 @@ def reply(db: Session, client: GeminiClient, user: User, message: str, history: 
     contents = _history_contents(history or []) + [{"role": "user", "parts": [{"text": user_text}]}]
     for attempt in range(MAX_MODEL_SWITCHES + 1):
         try:
-            r, used, product_codes, latency = _tool_loop(db, client, user, system, contents, declarations)
+            r, used, product_codes, latency = _tool_loop(db, client, user, system, contents, declarations, emit)
             break
         except AIError as e:
             # Model đang dùng hết lượt / quá tải GIỮA CHỪNG câu hỏi: làm lại câu hỏi từ đầu trên model khác
@@ -101,17 +105,23 @@ def reply(db: Session, client: GeminiClient, user: User, message: str, history: 
             "source": "ai", "warning": None, "latency_ms": latency, "model": r.model}
 
 
-def _tool_loop(db: Session, client: GeminiClient, user: User, system: str, contents: list[dict], declarations: list[dict]):
+def _tool_loop(db: Session, client: GeminiClient, user: User, system: str, contents: list[dict], declarations: list[dict],
+               emit=None):
     """Vòng gọi công cụ cho một câu hỏi. Model được ghim sau vòng đầu để các vòng sau dùng cùng model."""
+    def on_text(delta):
+        emit({"type": "reset"} if delta is None else {"type": "text", "text": delta})
+
     contents = list(contents)
     used: dict[str, str] = {}
     product_codes: set[str] = set()
     latency, model = 0, None
     for round_no in range(MAX_ROUNDS + 1):
         last = round_no == MAX_ROUNDS
+        if emit:
+            emit({"type": "reset"})  # chữ AI viết kèm lệnh gọi công cụ ở vòng trước không phải câu trả lời cuối
         try:
             r = client.chat(system, contents, tools=declarations, temperature=0.3, force_text=last,
-                            feature="assistant", model=model)
+                            feature="assistant", model=model, **({"on_text": on_text} if emit else {}))
         except AIError as e:
             e.mid_loop = model is not None
             raise
@@ -122,6 +132,8 @@ def _tool_loop(db: Session, client: GeminiClient, user: User, system: str, conte
         contents.append(r.content)
         parts = []
         for i, call in enumerate(r.calls):
+            if emit and call["name"] in tools.TOOLS:
+                emit({"type": "tool", "name": call["name"], "label": tools.TOOLS[call["name"]].label})
             if i < MAX_CALLS_PER_ROUND:
                 result = tools.run(db, user, call["name"], call["args"])
             else:

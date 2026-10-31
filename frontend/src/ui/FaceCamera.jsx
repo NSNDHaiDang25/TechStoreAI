@@ -12,7 +12,7 @@ function cameraError(e) {
   return t('Không mở được camera')
 }
 
-const FaceCamera = forwardRef(function FaceCamera({ status, state = '', onReady }, ref) {
+const FaceCamera = forwardRef(function FaceCamera({ status, statusIcon, state = '', onReady }, ref) {
   const video = useRef(null)
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
@@ -54,8 +54,11 @@ const FaceCamera = forwardRef(function FaceCamera({ status, state = '', onReady 
       <video ref={video} playsInline muted aria-label={t('Hình ảnh camera')} />
       {!ready && !error && <div className="face-cam-msg"><Icon name="camera" />{t('Đang mở camera...')}</div>}
       {error && <div className="face-cam-msg error"><Icon name="camera" />{error}</div>}
-      {ready && <div className="face-cam-guide" aria-hidden="true" />}
-      {ready && status && <div className="face-cam-status" role="status">{status}</div>}
+      {ready && <>
+        <div className="face-cam-guide" aria-hidden="true" />
+        <div className="face-cam-corners" aria-hidden="true"><span className="face-cam-scanline" /></div>
+      </>}
+      {ready && status && <div className="face-cam-status" role="status">{statusIcon && <Icon name={statusIcon} />}{status}</div>}
     </div>
   )
 })

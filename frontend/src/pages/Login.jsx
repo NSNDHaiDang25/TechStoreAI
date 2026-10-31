@@ -26,10 +26,13 @@ function FaceLoginDialog({ remember, onClose }) {
   const [hint, setHint] = useState(t('Nhìn thẳng vào camera'))
   const [who, setWho] = useState(null)       // { full_name, role } khi đã nhận diện được
   const [phase, setPhase] = useState('scanning')  // scanning | done | failed
+  const [photo, setPhoto] = useState('')     // khung hình lúc nhận diện ra người, làm ảnh đại diện (chỉ giữ trong trình duyệt)
+  const photoRef = useRef('')
+  const setPhotoUrl = (url) => { if (photoRef.current) URL.revokeObjectURL(photoRef.current); photoRef.current = url; setPhoto(url) }
 
   const scan = useCallback(async () => {
     const id = ++run.current
-    setPhase('scanning'); setWho(null); setStep(0); setSteps([]); setHint(t('Nhìn thẳng vào camera'))
+    setPhase('scanning'); setWho(null); setStep(0); setSteps([]); setHint(t('Nhìn thẳng vào camera')); setPhotoUrl('')
     try {
       const s = await api.post('/auth/face-login/start')
       if (run.current !== id) return
@@ -44,7 +47,10 @@ function FaceLoginDialog({ remember, onClose }) {
           const r = await api.upload('/auth/face-login/frame', form)
           if (run.current !== id) return
           setStep(r.step)
-          if (r.user) setWho({ full_name: r.user.full_name, role: r.user.role })
+          if (r.user) {
+            if (!photoRef.current) setPhotoUrl(URL.createObjectURL(image))
+            setWho({ full_name: r.user.full_name, role: r.user.role })
+          }
           if (r.done) {
             setPhase('done')
             setTimeout(() => { if (run.current === id) acceptLogin(r, remember) }, GREET_MS)
@@ -59,44 +65,47 @@ function FaceLoginDialog({ remember, onClose }) {
     }
   }, [acceptLogin, remember])
 
-  useEffect(() => () => { run.current += 1 }, [])  // đóng hộp thoại thì dừng gửi
+  useEffect(() => () => {  // đóng hộp thoại thì dừng gửi và bỏ ảnh tạm
+    run.current += 1
+    if (photoRef.current) URL.revokeObjectURL(photoRef.current)
+  }, [])
 
-  const current = steps[step]
   const camState = phase === 'done' ? 'ok' : phase === 'failed' ? 'miss' : 'scanning'
+  const name = !who ? t('Đang nhận diện...') : phase === 'done' ? t('Xin chào, {name}', { name: who.full_name }) : who.full_name
+  // Dòng trạng thái dưới tên cũng là lời hướng dẫn (camera không còn thanh chữ đè lên hình)
+  const sub = phase === 'failed' || !who ? hint
+    : phase === 'done' ? `${ROLE_VI[who.role]} · ${t('Đang vào hệ thống...')}`
+    : `${ROLE_VI[who.role]} · ${hint}`
   return (
-    <Modal title={t('Đăng nhập bằng Face ID')} onClose={onClose} size="narrow" footer={<>
-      <button className="btn" onClick={onClose}>{t('Dùng mật khẩu')}</button>
-      {phase === 'failed' && <button className="btn primary" onClick={scan}><Icon name="scan" />{t('Thử lại')}</button>}
-    </>}>
+    <Modal title={t('Đăng nhập bằng Face ID')} icon="scan" onClose={onClose} size="narrow face-modal">
       <div className={`face-who ${who ? 'known' : ''} ${phase}`} aria-live="polite">
-        {who ? <>
-          <span className="face-who-icon"><Icon name={phase === 'done' ? 'check' : ROLE_ICON[who.role] || 'user'} /></span>
-          <span className="face-who-text">
-            <span className="face-who-name">{phase === 'done' ? t('Xin chào, {name}', { name: who.full_name }) : who.full_name}</span>
-            <span className="face-who-role">{ROLE_VI[who.role]}{phase !== 'done' && ` · ${t('đang kiểm tra người thật')}`}</span>
-          </span>
-        </> : <>
-          <span className="face-who-icon"><Icon name="scan" /></span>
-          <span className="face-who-text"><span className="face-who-name">{t('Đang nhận diện...')}</span>
-            <span className="face-who-role">{t('Hệ thống sẽ cho biết bạn là chủ cửa hàng hay quản trị viên')}</span></span>
-        </>}
+        <span className="face-who-avatar">
+          {photo ? <img src={photo} alt="" /> : <Icon name={who ? ROLE_ICON[who.role] || 'user' : 'user'} />}
+          {who && <span className="face-who-badge" />}
+        </span>
+        <span className="face-who-text">
+          <span className="face-who-name">{name}</span>
+          <span className="face-who-status"><span className="face-who-dot" />{sub}</span>
+        </span>
       </div>
-      <div className="face-stage">
-        <FaceCamera ref={cam} status={phase === 'done' ? t('Đang vào hệ thống...') : hint} state={camState} onReady={scan} />
-        {phase === 'scanning' && (current === 'left' || current === 'right') && (
-          <span className={`face-arrow ${current}`} aria-hidden="true"><Icon name="chevron" /></span>
-        )}
-      </div>
+      <FaceCamera ref={cam} state={camState} onReady={scan} />
       {steps.length > 1 && (
         <ol className="face-steps">
-          {steps.map((s, i) => (
-            <li key={s} className={i < step || phase === 'done' ? 'done' : i === step && phase === 'scanning' ? 'active' : ''}>
-              <span className="face-step-dot">{i < step || phase === 'done' ? <Icon name="check" /> : i + 1}</span>{STEP_LABEL[s]}
-            </li>
-          ))}
+          {steps.map((s, i) => {
+            const done = i < step || phase === 'done'
+            return (
+              <li key={s} className={done ? 'done' : i === step && phase === 'scanning' ? 'active' : ''} aria-current={!done && i === step ? 'step' : undefined}>
+                <span className="face-step-dot">{done ? <Icon name="check" /> : i + 1}</span>{STEP_LABEL[s]}
+              </li>
+            )
+          })}
         </ol>
       )}
-      <p className="muted face-hint">{t('Dành cho chủ cửa hàng và quản trị viên đã đăng ký Face ID. Nhìn thẳng để nhận diện, sau đó quay đầu theo hướng dẫn để xác minh là người thật, không phải ảnh chụp.')}</p>
+      <p className="face-hint">{t('Dành cho chủ cửa hàng và quản trị viên đã đăng ký Face ID. Nhìn thẳng để nhận diện, sau đó quay đầu theo hướng dẫn để xác minh là người thật, không phải ảnh chụp.')}</p>
+      <div className="face-actions">
+        {phase === 'failed' && <button className="btn primary block lg" onClick={scan}><Icon name="refresh" />{t('Thử lại')}</button>}
+        <button className="btn block lg" onClick={onClose}><Icon name="key" />{t('Dùng mật khẩu truyền thống')}</button>
+      </div>
     </Modal>
   )
 }
@@ -169,7 +178,6 @@ export default function Login() {
       </aside>
       <main className="auth-main">
         <div className="auth-top">
-          <span className="muted">{t('Giao diện')}</span>
           <div className="auth-top-actions"><LangToggle /><ThemeToggle /></div>
         </div>
         <form className="auth-card" onSubmit={submit}>

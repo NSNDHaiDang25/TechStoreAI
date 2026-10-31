@@ -16,7 +16,12 @@ import httpx
 from app.config import settings
 
 logger = logging.getLogger("ai")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+# Gọi bản trả theo luồng (SSE): model gửi dần từng đoạn nên phát hiện được model treo sớm (không có byte nào
+# trong STALL_SECONDS giây) thay vì chờ hết AI_TIMEOUT_SECONDS, và chữ hiện dần lên giao diện.
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"
+# Bình thường model gửi đoạn đầu sau 1-5 giây. Im lặng lâu hơn mức này mà còn model khác thì bỏ, chuyển model.
+# Model cuối cùng còn dùng được vẫn được chờ đủ AI_TIMEOUT_SECONDS.
+STALL_SECONDS = 12
 
 # Ngôn ngữ giao diện của người đang hỏi (middleware đọc header Accept-Language). Prompt viết bằng tiếng Việt;
 # khi giao diện tiếng Anh thì dặn thêm AI trả lời bằng tiếng Anh, dịch cả tên sản phẩm và nhóm hàng tiếng Việt
@@ -66,6 +71,31 @@ def _local_time(ts: float) -> str:
     return datetime.fromtimestamp(ts).strftime("%H:%M ngày %d/%m")
 
 
+def _merge_stream(resp: httpx.Response, on_text=None) -> httpx.Response:
+    """Gộp các đoạn SSE ("data: {...}") của streamGenerateContent thành một phản hồi như generateContent.
+    Giữ nguyên từng part (kể cả thoughtSignature) để gửi lại đúng ở lượt sau. Đoạn báo lỗi giữa chừng
+    được trả về như một phản hồi lỗi cùng mã để xử lý như bản không theo luồng."""
+    parts: list[dict] = []
+    last: dict = {}
+    for line in resp.iter_lines():
+        if not line.startswith("data:"):
+            continue
+        try:
+            chunk = json.loads(line[5:])
+        except ValueError:
+            raise AIError("Phản hồi AI sai định dạng", "bad_response")
+        if "error" in chunk:
+            return httpx.Response(int(chunk["error"].get("code") or 500), json=chunk)
+        candidate = (chunk.get("candidates") or [{}])[0]
+        for part in (candidate.get("content") or {}).get("parts") or []:
+            parts.append(part)
+            if on_text and part.get("text") and not part.get("thought"):
+                on_text(part["text"])
+        last = candidate
+    merged = {**last, "content": {"role": "model", "parts": parts}}
+    return httpx.Response(200, json={"candidates": [merged]})
+
+
 @dataclass
 class AIResult:
     text: str
@@ -101,6 +131,7 @@ class GeminiClient:
         # model -> (thời điểm dùng lại được, lý do: day | minute | busy | gone)
         self._resting: dict[str, tuple[float, str]] = {}
         self._no_thinking: set[str] = set()  # model từ chối tùy chọn mức suy nghĩ: gửi không kèm tùy chọn này
+        self._timeouts: dict[str, int] = {}  # model -> số lần timeout liên tiếp (tăng thời gian nghỉ)
 
     @property
     def enabled(self) -> bool:
@@ -143,11 +174,13 @@ class GeminiClient:
         return AIResult(text=text, model=model, latency_ms=latency, retries=retries)
 
     def chat(self, system: str, contents: list[dict], *, tools: list[dict], temperature: float = 0.3,
-             force_text: bool = False, feature: str = "unknown", model: str | None = None) -> ChatReply:
+             force_text: bool = False, feature: str = "unknown", model: str | None = None,
+             on_text=None) -> ChatReply:
         """Hội thoại nhiều lượt có khai báo công cụ (Gemini function calling).
 
         force_text=True: cấm gọi thêm công cụ, buộc AI trả lời bằng văn bản (dùng ở vòng cuối).
         model: ghim model cho các vòng sau của cùng một câu hỏi (chữ ký suy luận chỉ hợp lệ với model đã tạo ra nó).
+        on_text: hàm nhận từng đoạn chữ ngay khi model viết ra (hiện dần câu trả lời trên giao diện).
         """
         body = {
             "systemInstruction": {"parts": [{"text": localize(system)}]},
@@ -158,7 +191,7 @@ class GeminiClient:
         }
         preview = next((p.get("text", "") for c in reversed(contents) if c.get("role") == "user"
                         for p in c.get("parts", []) if "text" in p), "")
-        data, latency, used, _ = self._post(body, feature, preview, only=model)
+        data, latency, used, _ = self._post(body, feature, preview, only=model, on_text=on_text)
         try:
             candidate = data["candidates"][0]
             content = candidate.get("content") or {}
@@ -176,14 +209,16 @@ class GeminiClient:
         return ChatReply(text=text, calls=calls, content={"role": "model", "parts": parts},
                          model=used, latency_ms=latency)
 
-    def _post(self, body: dict, feature: str, preview: str, only: str | None = None) -> tuple[dict, int, str, int]:
+    def _post(self, body: dict, feature: str, preview: str, only: str | None = None,
+              on_text=None) -> tuple[dict, int, str, int]:
         """Gửi request lần lượt tới các model còn lượt.
         Trả về (JSON phản hồi, độ trễ ms, model đã trả lời, số lần gọi thất bại trước đó).
 
         - 429 hết lượt trong ngày: model nghỉ đến khi hạn mức làm mới, chuyển model kế tiếp (không thử lại).
         - 429 theo phút: model nghỉ đúng số giây Google yêu cầu, chuyển model kế tiếp.
-        - Timeout / 503 (Google báo quá tải): nghỉ 60 giây và chuyển model NGAY, vì thử lại lúc quá tải
-          thường chỉ tốn thêm vài chục giây chờ.
+        - Timeout / 503 (Google báo quá tải): model nghỉ và chuyển model NGAY, vì thử lại lúc quá tải
+          thường chỉ tốn thêm vài chục giây chờ. Còn model khác để chuyển thì model im lặng quá STALL_SECONDS
+          giây đã tính là timeout.
         - 5xx khác, lỗi mạng: thử lại cùng model (backoff), vẫn lỗi thì nghỉ 60 giây và chuyển model.
         - 404 (model ngừng hỗ trợ): bỏ model đó. 400/401/403: lỗi cấu hình (key sai...), dừng ngay.
         """
@@ -196,21 +231,38 @@ class GeminiClient:
         started = time.perf_counter()
         last_error: AIError | None = None
         failures = 0
+        if on_text:
+            # Gửi lại (thử lại / đổi model) sau khi đã hiện một phần chữ: on_text(None) báo bỏ phần chữ đó
+            shown, emit = [False], on_text
+
+            def on_text(delta):
+                if delta is None and not shown[0]:
+                    return
+                shown[0] = delta is not None
+                emit(delta)
 
         for model in candidates:
             url = GEMINI_URL.format(model=model)
+            # Còn model khác để chuyển sang thì không chờ model đang im lặng quá lâu
+            stall = min(STALL_SECONDS, self.timeout) if any(m != model for m in self.available_models()) else self.timeout
             for attempt in range(self.max_retries + 1):
+                if on_text:
+                    on_text(None)
                 try:
-                    resp = self._send(url, headers, self._payload(body, model))
+                    resp = self._send(url, headers, self._payload(body, model), stall, on_text)
                     if (resp.status_code == 400 and self.thinking_level and model not in self._no_thinking
                             and "thinking" in self._error_message(resp).lower()):
                         # Model không hỗ trợ tùy chọn mức suy nghĩ: gửi lại không kèm, ghi nhớ cho các lần sau
                         self._no_thinking.add(model)
-                        resp = self._send(url, headers, self._payload(body, model))
+                        resp = self._send(url, headers, self._payload(body, model), stall, on_text)
                 except httpx.TimeoutException:
                     last_error = AIError("AI phản hồi quá lâu (timeout)", "timeout")
                     failures += 1
-                    self._busy(model, last_error, feature, preview, started)
+                    # Model treo hết thời gian chờ mỗi lượt tốn cả chục giây: cho nghỉ lâu hơn quá tải thường,
+                    # treo liên tiếp thì nghỉ gấp đôi (5, 10, 20, 30 phút)
+                    strikes = self._timeouts.get(model, 0)
+                    self._timeouts[model] = strikes + 1
+                    self._busy(model, last_error, feature, preview, started, seconds=min(300 * 2 ** strikes, 1800))
                     break
                 except httpx.HTTPError as e:
                     last_error = AIError(f"Không kết nối được AI: {e.__class__.__name__}", "error")
@@ -221,6 +273,7 @@ class GeminiClient:
                             data = resp.json()
                         except ValueError:
                             raise AIError("Phản hồi AI sai định dạng", "bad_response")
+                        self._timeouts.pop(model, None)
                         return data, int((time.perf_counter() - started) * 1000), model, failures
                     if resp.status_code == 429:
                         last_error = self._on_quota(model, resp)
@@ -260,9 +313,16 @@ class GeminiClient:
             raise self._all_resting_error()
         raise last_error
 
-    def _send(self, url: str, headers: dict, payload: dict) -> httpx.Response:
-        with httpx.Client(timeout=self.timeout, transport=self._transport) as http:
-            return http.post(url, headers=headers, json=payload)
+    def _send(self, url: str, headers: dict, payload: dict, stall: float | None = None, on_text=None) -> httpx.Response:
+        """Gửi request và đọc phản hồi theo luồng. stall: số giây tối đa chờ giữa hai lần nhận dữ liệu.
+        Phản hồi 200 được gộp các đoạn lại thành một phản hồi JSON như bản không theo luồng."""
+        timeout = httpx.Timeout(self.timeout, read=stall or self.timeout)
+        with httpx.Client(timeout=timeout, transport=self._transport) as http:
+            with http.stream("POST", url, headers=headers, json=payload) as resp:
+                if resp.status_code != 200 or "text/event-stream" not in resp.headers.get("content-type", ""):
+                    resp.read()  # lỗi, hoặc máy chủ trả JSON thường: đọc hết để xử lý như cũ
+                    return resp
+                return _merge_stream(resp, on_text)
 
     def _payload(self, body: dict, model: str) -> dict:
         """Gắn mức suy nghĩ vào request, trừ model đã từ chối tùy chọn này."""
@@ -271,9 +331,10 @@ class GeminiClient:
         config = {**body.get("generationConfig", {}), "thinkingConfig": {"thinkingLevel": self.thinking_level}}
         return {**body, "generationConfig": config}
 
-    def _busy(self, model: str, error: AIError, feature: str, preview: str, started: float) -> None:
-        """Model quá tải / quá chậm: nghỉ 60 giây để câu hỏi này và các câu sau dùng model kế tiếp."""
-        self._rest(model, 60, "busy")
+    def _busy(self, model: str, error: AIError, feature: str, preview: str, started: float,
+              seconds: float = 60) -> None:
+        """Model quá tải / quá chậm: nghỉ một lúc để câu hỏi này và các câu sau dùng model kế tiếp."""
+        self._rest(model, seconds, "busy")
         self._log(feature, error.kind, int((time.perf_counter() - started) * 1000), preview, str(error), model)
 
     def _on_quota(self, model: str, resp: httpx.Response) -> AIError:

@@ -9,13 +9,13 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import EmailLog, FaceProfile, PasswordReset, User, now
-from app.schemas import (AdminResetPasswordIn, ChangePasswordIn, ForgotPasswordIn, LoginIn, RegisterIn,
+from app.models import AuditLog, Branch, EmailLog, FaceProfile, PasswordReset, User, now
+from app.schemas import (AdminResetPasswordIn, BranchIn, ChangePasswordIn, ForgotPasswordIn, LoginIn, RegisterIn,
                          ResetPasswordIn, TokenOut, UserCreate, UserOut, UserUpdate)
 from app.security import (ADMIN_ONLY, ADMIN_OR_OWNER, create_token, get_current_user, hash_password, needs_rehash,
                           revoke_token, verify_password)
@@ -442,7 +442,28 @@ def list_users(db: Session = Depends(get_db), _: User = Depends(ADMIN_ONLY)):
 
 
 def _user_snapshot(u: User) -> dict:
-    return {"full_name": u.full_name, "role": u.role, "is_active": u.is_active, "email": u.email, "phone": u.phone}
+    return {"full_name": u.full_name, "role": u.role, "is_active": u.is_active, "email": u.email, "phone": u.phone,
+            "branch": u.branch_name}
+
+
+def _branch_for(db: Session, role: str, branch_id: int | None) -> int | None:
+    """Chi nhánh hợp lệ cho tài khoản: quản trị viên không thuộc chi nhánh nào."""
+    if role == "admin" or branch_id is None:
+        return None
+    branch = db.get(Branch, branch_id)
+    if branch is None or not branch.is_active:
+        raise HTTPException(400, "Chi nhánh không tồn tại hoặc đã ngừng hoạt động")
+    return branch.id
+
+
+def _set_branch(db: Session, user: User, branch_id: int | None) -> None:
+    """Gán chi nhánh. Lần đầu gán: nhật ký cũ của người này (chưa có chi nhánh) tính vào chi nhánh vừa gán."""
+    if user.branch_id is None and branch_id is not None and user.id:
+        db.execute(update(AuditLog).where(AuditLog.user_id == user.id, AuditLog.branch_id.is_(None))
+                   .values(branch_id=branch_id))
+    user.branch_id = branch_id
+    db.flush()
+    db.refresh(user, ["branch"])
 
 
 def _active_admins(db: Session) -> int:
@@ -461,9 +482,10 @@ def create_user(data: UserCreate, db: Session = Depends(get_db), admin: User = D
         raise HTTPException(400, "Tên đăng nhập đã tồn tại")
     _check_unique_email(db, data.email)
     user = User(username=data.username, full_name=data.full_name, role=data.role, email=data.email, phone=data.phone,
-                password_hash=hash_password(data.password))
+                password_hash=hash_password(data.password), branch_id=_branch_for(db, data.role, data.branch_id))
     db.add(user)
     db.flush()
+    db.refresh(user, ["branch"])
     audit.log(db, admin, "USER_CREATE", "users", user.id, new=_user_snapshot(user))
     db.commit()
     return user
@@ -500,12 +522,58 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
         user.failed_login_count = 0
     if data.password:
         user.password_hash = hash_password(data.password)
+    if "branch_id" in data.model_fields_set or user.role == "admin":
+        branch_id = data.branch_id if "branch_id" in data.model_fields_set else user.branch_id
+        if branch_id != user.branch_id or user.role == "admin":
+            _set_branch(db, user, _branch_for(db, user.role, branch_id))
     after = _user_snapshot(user)
     if before != after:
         action = "ROLE_CHANGE" if before["role"] != after["role"] else "USER_UPDATE"
         audit.log(db, admin, action, "users", user.id, old=before, new=after)
     db.commit()
     return user
+
+
+# ---------------------------------------------------------------- Chi nhánh
+def _branch_out(db: Session, b: Branch) -> dict:
+    users = db.scalar(select(func.count(User.id)).where(User.branch_id == b.id, User.pending.is_(False))) or 0
+    return {"id": b.id, "name": b.name, "address": b.address, "is_active": b.is_active, "user_count": users}
+
+
+@router.get("/branches")
+def list_branches(db: Session = Depends(get_db), _: User = Depends(ADMIN_ONLY)):
+    return [_branch_out(db, b) for b in db.scalars(select(Branch).order_by(Branch.id))]
+
+
+def _check_branch_name(db: Session, name: str, branch_id: int | None = None) -> None:
+    if db.scalar(select(Branch.id).where(func.lower(Branch.name) == name.lower(), Branch.id != (branch_id or 0))):
+        raise HTTPException(400, "Tên chi nhánh đã tồn tại")
+
+
+@router.post("/branches", status_code=201)
+def create_branch(data: BranchIn, db: Session = Depends(get_db), admin: User = Depends(ADMIN_ONLY)):
+    _check_branch_name(db, data.name)
+    b = Branch(name=data.name, address=(data.address or "").strip() or None, is_active=data.is_active)
+    db.add(b)
+    db.flush()
+    audit.log(db, admin, "BRANCH_CREATE", "branches", b.id, new={"name": b.name, "address": b.address})
+    db.commit()
+    return _branch_out(db, b)
+
+
+@router.put("/branches/{branch_id}")
+def update_branch(branch_id: int, data: BranchIn, db: Session = Depends(get_db), admin: User = Depends(ADMIN_ONLY)):
+    b = db.get(Branch, branch_id)
+    if b is None:
+        raise HTTPException(404, "Không tìm thấy chi nhánh")
+    _check_branch_name(db, data.name, b.id)
+    before = {"name": b.name, "address": b.address, "is_active": b.is_active}
+    b.name, b.address, b.is_active = data.name, (data.address or "").strip() or None, data.is_active
+    after = {"name": b.name, "address": b.address, "is_active": b.is_active}
+    if before != after:
+        audit.log(db, admin, "BRANCH_UPDATE", "branches", b.id, old=before, new=after)
+    db.commit()
+    return _branch_out(db, b)
 
 
 @router.post("/users/{user_id}/reset-password")

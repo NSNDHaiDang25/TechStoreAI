@@ -30,7 +30,30 @@ export function ToastProvider({ children }) {
 }
 
 // ---------------------------------------------------------------- Hộp thoại
-export function Modal({ title, onClose, children, footer, size = '' }) {
+const sizeOf = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
+
+// Ô chọn tệp: bấm để chọn hoặc kéo thả tệp vào, chọn xong hiện tên và dung lượng (thay nút "Chọn tệp" mặc định của trình duyệt)
+export function FileDrop({ file, onFile, accept, title, hint, icon = 'upload', fileIcon = 'file' }) {
+  const [over, setOver] = useState(false)
+  const input = useRef(null)
+  const pick = (f) => { onFile(f || null); if (!f && input.current) input.current.value = '' }
+  return (
+    <label className={`file-drop ${over ? 'over' : ''} ${file ? 'has-file' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]) }}>
+      <input ref={input} type="file" accept={accept} onChange={(e) => pick(e.target.files?.[0])} />
+      <span className="fd-icon"><Icon name={file ? fileIcon : icon} /></span>
+      <span className="fd-text">
+        {file ? <><span className="fd-name">{file.name}</span><span className="fd-hint">{sizeOf(file.size)} {t('· bấm để chọn tệp khác')}</span></>
+          : <><span className="fd-name">{title || t('Chọn tệp hoặc kéo thả vào đây')}</span>{hint && <span className="fd-hint">{hint}</span>}</>}
+      </span>
+      {file && <button type="button" className="icon-tool" title={t('Bỏ chọn tệp')} aria-label={t('Bỏ chọn tệp')}
+        onClick={(e) => { e.preventDefault(); pick(null) }}><Icon name="x" /></button>}
+    </label>
+  )
+}
+
+export function Modal({ title, onClose, children, footer, size = '', icon }) {
   const ref = useRef(null)
   // Giữ onClose mới nhất trong ref: nơi gọi thường truyền hàm mũi tên viết thẳng, mỗi lần gõ phím
   // là một hàm mới. Nếu để onClose trong mảng phụ thuộc, effect chạy lại và kéo con trỏ về ô đầu.
@@ -46,7 +69,7 @@ export function Modal({ title, onClose, children, footer, size = '' }) {
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}>
       <div className={`modal ${size}`} role="dialog" aria-modal="true" aria-label={title} ref={ref}>
         <div className="modal-header">
-          <h2>{title}</h2>
+          <h2>{icon && <span className="modal-icon" aria-hidden="true"><Icon name={icon} /></span>}{title}</h2>
           <button className="btn ghost icon-only sm" onClick={onClose} aria-label={t('Đóng')}><Icon name="x" /></button>
         </div>
         <div className="modal-body">{children}</div>

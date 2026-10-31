@@ -1,6 +1,6 @@
 // Cấu hình (UC-07 tham số kinh doanh của chủ cửa hàng, UC-08 tham số kỹ thuật và AI của quản trị viên)
 // và hạng khách hàng (UC-16). Mọi thay đổi được ghi audit log ở backend.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api.js'
 import { useAuth } from '../auth.jsx'
 import { money, num } from '../format.js'
@@ -106,6 +106,12 @@ export default function Settings() {
   const [busy, setBusy] = useState(false)
   const byKey = useMemo(() => Object.fromEntries((data?.items || []).map((s) => [s.key, s])), [data])
   const changed = Object.keys(draft).filter((k) => draft[k] !== byKey[k]?.value)
+  useEffect(() => {  // F5 hoặc đóng tab khi còn thay đổi chưa lưu thì trình duyệt hỏi lại
+    if (!changed.length) return
+    const warn = (e) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [changed.length])
   const save = async () => {
     setBusy(true)
     try {
@@ -123,7 +129,8 @@ export default function Settings() {
     <div className="stack w-lg">
       <ErrorBox error={error} />
       {!data ? <Loading /> : <>
-        <div className="card">
+        {/* thanh Lưu dính dưới topbar để luôn nhìn thấy khi cuộn xuống */}
+        <div className="card" style={{ position: 'sticky', top: 76, zIndex: 5 }}>
           <div className="toolbar mb-0">
             <p className="muted small m-0 grow">{user.role === 'admin' ? t('Quản trị viên sửa tham số kỹ thuật, bảo mật và AI; tham số kinh doanh do chủ cửa hàng sửa (ở đây chỉ xem).') : t('Chủ cửa hàng sửa tham số kinh doanh; tham số kỹ thuật và AI do quản trị viên quản lý.')}
               {' '}{t('Tham số mới có hiệu lực ngay, không cần khởi động lại.')}</p>

@@ -83,6 +83,22 @@ class UserOut(ORM):
     pending: bool = False
     locked_until: datetime | None = None
     last_login_at: datetime | None = None
+    branch_id: int | None = None
+    branch_name: str | None = None
+
+
+class BranchIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    address: str | None = Field(None, max_length=255)
+    is_active: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, v: str):
+        v = " ".join(v.split())
+        if not v:
+            raise ValueError("Vui lòng nhập tên chi nhánh")
+        return v
 
 
 class TokenOut(BaseModel):
@@ -98,6 +114,7 @@ class UserCreate(BaseModel):
     role: Role = "staff"
     email: Annotated[str | None, AfterValidator(normalize_email)] = None
     phone: Annotated[str | None, AfterValidator(normalize_phone)] = None
+    branch_id: int | None = None  # chi nhánh của chủ cửa hàng / nhân viên; quản trị viên bỏ trống
 
 
 class ChangePasswordIn(BaseModel):
@@ -150,6 +167,7 @@ class UserUpdate(BaseModel):
     email: Annotated[str | None, AfterValidator(normalize_email)] = None
     phone: Annotated[str | None, AfterValidator(normalize_phone)] = None
     unlock: bool = False  # mở khóa tạm do đăng nhập sai nhiều lần
+    branch_id: int | None = None  # gửi null để bỏ khỏi chi nhánh
 
 
 # ---------- Category ----------

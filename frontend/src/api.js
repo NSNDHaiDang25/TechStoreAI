@@ -65,7 +65,33 @@ async function request(method, path, { params, body, form, raw } = {}) {
   return data
 }
 
+// Nhận phản hồi trả dần (mỗi dòng một JSON). Gọi onEvent cho từng sự kiện tiến trình,
+// trả về sự kiện cuối {"type": "done", ...}; sự kiện {"type": "error"} thành lỗi như request thường.
+async function stream(path, body, onEvent) {
+  const res = await request('POST', path, { body, raw: true })
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    let i
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim()
+      buf = buf.slice(i + 1)
+      if (!line) continue
+      const event = JSON.parse(line)
+      if (event.type === 'done') return event
+      if (event.type === 'error') throw new ApiError(500, t(event.message), event)
+      onEvent(event)
+    }
+  }
+  throw new ApiError(0, t('Mất kết nối khi đang nhận câu trả lời, hãy thử lại'))
+}
+
 export const api = {
+  stream,
   get: (path, params) => request('GET', path, { params }),
   post: (path, body, params) => request('POST', path, { body, params }),
   put: (path, body) => request('PUT', path, { body }),

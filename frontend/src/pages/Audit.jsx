@@ -1,50 +1,121 @@
 // Nhật ký thao tác (UC-06, bảng audit_logs) và nhật ký gửi email
-import { useState } from 'react'
-import { api } from '../api.js'
+import { useEffect, useState } from 'react'
+import { api, openFile } from '../api.js'
+import { useAuth } from '../auth.jsx'
 import { daysAgo, fmtDateTime, today } from '../format.js'
 import Icon from '../ui/Icon.jsx'
-import { Empty, ErrorBox, Loading, Pager, useLoad } from '../ui/kit.jsx'
-import { t } from '../i18n.js'
+import { Empty, ErrorBox, Loading, Pager, useLoad, useToast } from '../ui/kit.jsx'
+import { numLocale, t } from '../i18n.js'
 
-const ACTION_VI = {
-  LOGIN_FAILED: t('Đăng nhập sai'), FACE_LOGIN: t('Đăng nhập Face ID'), FACE_ENROLL: t('Đăng ký Face ID'), FACE_DELETE: t('Xóa Face ID'),
-  ACCOUNT_LOCKED: t('Khóa tài khoản tạm'), USER_CREATE: t('Tạo tài khoản'), USER_UPDATE: t('Sửa tài khoản'),
-  ROLE_CHANGE: t('Đổi vai trò'), PASSWORD_RESET: t('Đặt lại mật khẩu'), PASSWORD_CHANGE: t('Đổi mật khẩu'), SETTINGS_UPDATE: t('Sửa cấu hình'),
-  SETTINGS_UPDATE_OWNER: t('Sửa cấu hình kinh doanh'), DB_BACKUP: t('Sao lưu CSDL'), DB_RESTORE: t('Khôi phục CSDL'),
-  INVOICE_CANCEL: t('Hủy hóa đơn'), INVOICE_CANCEL_REQUEST: t('Yêu cầu hủy hóa đơn'), INVOICE_CANCEL_REJECT: t('Từ chối hủy hóa đơn'),
-  INVOICE_REPRINT: t('In lại hóa đơn'), INVOICE_BELOW_COST: t('Bán dưới giá vốn'), PRICE_CHANGE: t('Đổi giá'), STOCK_ADJUST: t('Điều chỉnh tồn'),
-  SERIAL_UPDATE: t('Sửa serial'), PURCHASE_CONFIRM: t('Xác nhận nhập kho'), PURCHASE_CANCEL: t('Hủy phiếu nhập'), RETURN_CREATE: t('Đổi trả'),
-  POINTS_ADJUST: t('Điều chỉnh điểm'), TIER_UPDATE: t('Sửa hạng khách'), PROMOTION_UPDATE: t('Sửa khuyến mãi'), CUSTOMER_DEACTIVATE: t('Ngừng theo dõi khách'), PRODUCT_IMPORT: t('Nhập sản phẩm từ CSV'),
+// Màu nhãn theo loại đối tượng bị tác động
+const ENTITY_TONE = {
+  users: 'red', branches: 'red', settings: 'red', database: 'red',
+  products: 'blue', product_serials: 'blue', import_receipts: 'cyan',
+  invoices: 'yellow', returns: 'yellow', promotions: 'yellow',
+  customers: 'green', customer_tiers: 'green',
 }
 
-function Json({ value }) {
-  if (!value) return <span className="muted">-</span>
-  let text = value
-  try { text = JSON.stringify(JSON.parse(value), null, 1).replace(/^\{\n|\n\}$/g, '').replace(/"/g, '') } catch { /* để nguyên */ }
-  return <pre className="json-diff">{text}</pre>
+const fmtValue = (v) => {
+  if (v === null || v === undefined || v === '') return '-'
+  if (typeof v === 'number') return v.toLocaleString(numLocale)
+  if (typeof v === 'boolean') return v ? t('Có') : t('Không')
+  return t(String(v))
+}
+
+// Trước → Sau: giá trị cũ gạch ngang màu đỏ, giá trị mới màu xanh; chỉ các trường thay đổi
+function Changes({ list }) {
+  const [open, setOpen] = useState(false)
+  if (!list?.length) return <span className="muted">-</span>
+  const shown = open ? list : list.slice(0, 3)
+  return (
+    <div className="audit-changes">
+      {shown.map((c, i) => (
+        <div key={`${c.field}-${i}`} className="audit-change">
+          {c.label && <span className="muted">{t(c.label)}: </span>}
+          {c.old !== null && c.old !== undefined && <><s className="audit-old">{fmtValue(c.old)}</s><span className="audit-arrow" aria-label={t('thành')}>→</span></>}
+          <span className="audit-new">{fmtValue(c.new)}</span>
+        </div>
+      ))}
+      {list.length > 3 && <button type="button" className="link-btn small" onClick={() => setOpen(!open)}>
+        {open ? t('Thu gọn') : t('+{0} thay đổi khác', [list.length - 3])}</button>}
+    </div>
+  )
 }
 
 function AuditLogs() {
-  const [f, setF] = useState({ action: '', date_from: daysAgo(29), date_to: today() })
+  const { user } = useAuth()
+  const toast = useToast()
+  const [f, setF] = useState({ user_id: '', entity: '', action: '', date_from: daysAgo(29), date_to: today(), branch_id: '' })
+  const [search, setSearch] = useState('')
+  const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
-  const { data, error } = useLoad(() => api.get('/audit-logs', { ...f, page, size: 50 }), [JSON.stringify(f), page])
+  useEffect(() => { const tt = setTimeout(() => { setPage(1); setQ(search.trim()) }, 300); return () => clearTimeout(tt) }, [search])
+  const params = { ...f, q }
+  const { data, error } = useLoad(() => api.get('/audit-logs', { ...params, page, size: 50 }), [JSON.stringify(params), page])
   const set = (k) => (e) => { setPage(1); setF({ ...f, [k]: e.target.value }) }
+  const pick = (id) => { setPage(1); setF({ ...f, branch_id: id }) }
+  const branches = data?.branches || []
+  const counts = data?.branch_counts || {}
+  const all = Object.values(counts).reduce((a, b) => a + b, 0)
+  const showBranch = user.role === 'admin' && f.branch_id === '' && branches.length > 0  // cột chi nhánh khi xem tất cả
+  const exportXlsx = () => openFile('/audit-logs/export', params, `nhat-ky-thao-tac-${today()}.xlsx`).catch((e) => toast(e.message, 'error'))
+
   return <>
-    <div className="toolbar">
-      <label>{t('Thao tác')}<select value={f.action} onChange={set('action')}><option value="">{t('Tất cả')}</option>
-        {(data?.actions || []).map((a) => <option key={a} value={a}>{ACTION_VI[a] || a}</option>)}</select></label>
-      <label>{t('Từ ngày')}<input type="date" value={f.date_from} onChange={set('date_from')} /></label>
-      <label>{t('Đến ngày')}<input type="date" value={f.date_to} onChange={set('date_to')} /></label>
+    <div className="audit-head">
+      <p className="muted m-0">{data?.branch_name
+        ? <>{t('Thao tác nghiệp vụ tại chi nhánh')} <span className="strong">{data.branch_name}</span></>
+        : t('Mọi thao tác trên tài khoản, giá, kho, hóa đơn, khách hàng và cấu hình, chia theo chi nhánh nơi thực hiện')}</p>
+      <button className="btn" onClick={exportXlsx}><Icon name="download" />{t('Xuất Excel')}</button>
     </div>
+
+    {/* Quản trị viên: tab từng chi nhánh kèm số thao tác; "Hệ thống" = không thuộc chi nhánh nào */}
+    {branches.length > 0 && (
+      <div className="tabs-line" role="tablist" aria-label={t('Chi nhánh')}>
+        {[['', t('Tất cả'), all], ...branches.map((b) => [String(b.id), b.name, counts[b.id] || 0]), ['0', t('Hệ thống'), counts[0] || 0]].map(([id, name, n]) => (
+          <button key={id} type="button" role="tab" aria-selected={f.branch_id === id} className={f.branch_id === id ? 'active' : ''} onClick={() => pick(id)}>
+            {name} <span className="tab-count">({n})</span></button>
+        ))}
+      </div>
+    )}
+
+    <div className="audit-filters">
+      <select value={f.user_id} onChange={set('user_id')} aria-label={t('Người thực hiện')}>
+        <option value="">{t('Người thực hiện: Tất cả')}</option>
+        {(data?.users || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+        {user.role === 'admin' && <option value="0">{t('Hệ thống')}</option>}
+      </select>
+      <select value={f.entity} onChange={set('entity')} aria-label={t('Đối tượng')}>
+        <option value="">{t('Đối tượng: Tất cả')}</option>
+        {(data?.entities || []).map((e) => <option key={e.value} value={e.value}>{t(e.label)}</option>)}
+      </select>
+      <select value={f.action} onChange={set('action')} aria-label={t('Thao tác')}>
+        <option value="">{t('Thao tác: Tất cả')}</option>
+        {(data?.actions || []).map((a) => <option key={a.value} value={a.value}>{t(a.label)}</option>)}
+      </select>
+      <div className="date-range">
+        <input type="date" value={f.date_from} onChange={set('date_from')} aria-label={t('Từ ngày')} />
+        <span className="muted">–</span>
+        <input type="date" value={f.date_to} onChange={set('date_to')} aria-label={t('Đến ngày')} />
+      </div>
+      <div className="input-icon audit-search"><Icon name="search" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('Tìm theo tên, mã sản phẩm, hóa đơn, khách hàng')} aria-label={t('Tìm trong nhật ký')} /></div>
+    </div>
+
     <ErrorBox error={error} />
-    {!data ? <Loading /> : !data.items.length ? <Empty icon="clipboard" title={t('Không có thao tác nào trong kỳ')} /> : <>
-      <div className="table-wrap"><table>
-        <thead><tr><th>{t('Thời gian')}</th><th>{t('Người thực hiện')}</th><th>{t('Thao tác')}</th><th>{t('Đối tượng')}</th><th>{t('Trước')}</th><th>{t('Sau')}</th><th>IP</th></tr></thead>
+    {!data ? <Loading /> : !data.items.length ? <Empty icon="clipboard" title={t('Không có thao tác nào phù hợp')} /> : <>
+      <div className="table-wrap"><table className="audit-table">
+        <thead><tr><th>{t('Thời điểm')}</th>{showBranch && <th>{t('Chi nhánh')}</th>}<th>{t('Người thực hiện')}</th><th>{t('Đối tượng')}</th>
+          <th>{t('Thao tác')}</th><th>{t('Trên')}</th><th>{t('Trước → Sau')}</th></tr></thead>
         <tbody>{data.items.map((r) => (
-          <tr key={r.id}><td className="small nowrap">{fmtDateTime(r.created_at)}</td><td>{r.user_name || <span className="muted">{t('Hệ thống')}</span>}</td>
-            <td><span className="badge">{ACTION_VI[r.action] || r.action}</span></td>
-            <td className="small">{r.entity}{r.entity_id ? ` #${r.entity_id}` : ''}</td>
-            <td><Json value={r.old_value} /></td><td><Json value={r.new_value} /></td><td className="small muted">{r.ip_address || '-'}</td></tr>
+          <tr key={r.id}>
+            <td className="small nowrap" title={r.ip_address ? `IP ${r.ip_address}` : undefined}>{fmtDateTime(r.created_at)}</td>
+            {showBranch && <td className="small">{r.branch_name || <span className="muted">{t('Hệ thống')}</span>}</td>}
+            <td className="strong">{r.user_name || <span className="muted">{t('Hệ thống')}</span>}</td>
+            <td><span className={`badge ${ENTITY_TONE[r.entity] || ''}`}>{t(r.entity_label)}</span></td>
+            <td className="strong">{t(r.action_label)}</td>
+            <td className="small audit-target">{r.target || <span className="muted">-</span>}</td>
+            <td className="small"><Changes list={r.changes} /></td>
+          </tr>
         ))}</tbody>
       </table></div>
       <Pager page={page} size={50} total={data.total} onPage={setPage} />

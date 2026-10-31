@@ -9,10 +9,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AuditLog, EmailLog, User, now
+from app.models import AuditLog, Branch, EmailLog, User, now
 from app.schemas import SettingsUpdateIn
 from app.security import ADMIN_ONLY, ADMIN_OR_OWNER, get_current_user
-from app.services import app_settings, audit, loyalty
+from app.services import app_settings, audit, audit_view, loyalty
+from app.services.export import MEDIA, to_xlsx
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -50,34 +51,53 @@ def put_settings(data: SettingsUpdateIn, db: Session = Depends(get_db), user: Us
 
 
 # ---------------------------------------------------------------- Nhật ký (UC-06)
+def _audit_filters(action: str | None = None, entity: str | None = None, user_id: int | None = None,
+                   date_from: str | None = None, date_to: str | None = None, q: str | None = None,
+                   branch_id: int | None = Query(None, description="Lọc theo chi nhánh (quản trị viên); 0 = không thuộc chi nhánh nào")) -> dict:
+    return {"action": action, "entity": entity, "user_id": user_id, "date_from": date_from, "date_to": date_to,
+            "q": q, "branch_id": branch_id}
+
+
 @router.get("/audit-logs")
-def audit_logs(action: str | None = None, entity: str | None = None, user_id: int | None = None,
-               date_from: str | None = None, date_to: str | None = None,
-               page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200),
+def audit_logs(f: dict = Depends(_audit_filters), page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200),
                db: Session = Depends(get_db), user: User = Depends(ADMIN_OR_OWNER)):
-    """Quản trị viên xem toàn bộ; chủ cửa hàng chỉ xem nhật ký nghiệp vụ (bảng 4.2)."""
-    from app.services.reports import parse_range
-    stmt = select(AuditLog)
-    if user.role == "owner":
-        stmt = stmt.where(AuditLog.action.in_(audit.BUSINESS_ACTIONS))
-    if action:
-        stmt = stmt.where(AuditLog.action == action)
-    if entity:
-        stmt = stmt.where(AuditLog.entity == entity)
-    if user_id:
-        stmt = stmt.where(AuditLog.user_id == user_id)
-    if date_from or date_to:
-        start, end = parse_range(date_from, date_to)
-        stmt = stmt.where(AuditLog.created_at >= start, AuditLog.created_at < end)
+    """Quản trị viên xem toàn bộ, tách theo chi nhánh; chủ cửa hàng chỉ xem nhật ký nghiệp vụ (bảng 4.2)
+    của chi nhánh mình (chủ chưa được gán chi nhánh thì không giới hạn chi nhánh).
+    q: tìm theo tên người thực hiện, mã / tên bản ghi bị tác động hoặc giá trị trước / sau."""
+    stmt = audit_view.filtered(user, **f)
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = db.scalars(stmt.order_by(AuditLog.id.desc()).offset((page - 1) * size).limit(size)).all()
-    actions = db.scalars(select(AuditLog.action).distinct().order_by(AuditLog.action)).all()
-    if user.role == "owner":
-        actions = [a for a in actions if a in audit.BUSINESS_ACTIONS]
-    return {"total": total, "actions": actions, "items": [{
-        "id": r.id, "user_name": r.user.full_name if r.user else None, "action": r.action, "entity": r.entity,
-        "entity_id": r.entity_id, "old_value": r.old_value, "new_value": r.new_value, "ip_address": r.ip_address,
-        "created_at": r.created_at} for r in rows]}
+    names = audit_view.targets(db, rows)
+
+    # Lựa chọn cho bộ lọc, trong phạm vi người xem được phép
+    scope = audit_view.scoped(user).subquery()
+    actions = db.scalars(select(scope.c.action).distinct().order_by(scope.c.action)).all()
+    entities = db.scalars(select(scope.c.entity).distinct().order_by(scope.c.entity)).all()
+    actors = db.execute(select(User.id, User.full_name).where(User.id.in_(select(scope.c.user_id)))
+                        .order_by(User.full_name)).all()
+    out = {"total": total, "items": [audit_view.item(r, names.get(r.id)) for r in rows],
+           "actions": [{"value": a, "label": audit_view.ACTION_LABELS.get(a, a)} for a in actions],
+           "entities": [{"value": e, "label": audit_view.ENTITY_LABELS.get(e, e)} for e in entities],
+           "users": [{"id": i, "name": n} for i, n in actors],
+           "branches": [], "branch_counts": {}, "branch_name": user.branch_name if user.role == "owner" else None}
+    if user.role == "admin":  # tab chi nhánh kèm số dòng (cùng bộ lọc, mọi chi nhánh)
+        out["branches"] = [{"id": b.id, "name": b.name, "is_active": b.is_active}
+                           for b in db.scalars(select(Branch).order_by(Branch.id))]
+        out["branch_counts"] = audit_view.branch_counts(db, audit_view.filtered(user, **{**f, "branch_id": None}))
+    return out
+
+
+@router.get("/audit-logs/export")
+def audit_logs_export(f: dict = Depends(_audit_filters), db: Session = Depends(get_db),
+                      user: User = Depends(ADMIN_OR_OWNER)):
+    """Xuất nhật ký đang lọc ra Excel (tối đa 10.000 dòng mới nhất)."""
+    rows = db.scalars(audit_view.filtered(user, **f).order_by(AuditLog.id.desc()).limit(10_000)).all()
+    names = audit_view.targets(db, rows)
+    items = [audit_view.item(r, names.get(r.id)) for r in rows]
+    headers = ["Thời điểm", "Chi nhánh", "Người thực hiện", "Đối tượng", "Thao tác", "Trên", "Trước", "Sau", "IP"]
+    content = to_xlsx([("Nhat ky thao tac", headers, audit_view.export_rows(items))])
+    return Response(content, media_type=MEDIA["xlsx"],
+                    headers={"Content-Disposition": f'attachment; filename="nhat-ky-thao-tac-{now():%Y%m%d-%H%M}.xlsx"'})
 
 
 @router.get("/email-logs")

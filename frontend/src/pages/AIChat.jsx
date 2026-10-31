@@ -12,7 +12,7 @@ import { locale, numLocale, t } from '../i18n.js'
 
 export const CFG = {
   assistant: {
-    endpoint: '/ai/assistant', name: t('Trợ lý TechStoreAI'), cart: true,
+    endpoint: '/ai/assistant', stream: '/ai/assistant/stream', name: t('Trợ lý TechStoreAI'), cart: true,
     greeting: t('Hôm nay mình giúp gì được cho bạn?'),
     intro: t('Hỏi về sản phẩm, giá, tồn kho, hóa đơn, khách hàng, doanh thu hay cách dùng phần mềm. Trợ lý tự tra dữ liệu thật của cửa hàng trong phạm vi quyền của bạn.'),
     placeholder: t('VD: tuần này bán được bao nhiêu? sạc nào dưới 200k còn hàng?'),
@@ -79,6 +79,37 @@ export const writeStored = (k, v) => { try { v ? localStorage.setItem(k, String(
 export const replyMeta = (res) => ({ suggestions: res.suggestions, removed: res.removed, tools: res.tools, model: res.model, source: res.source, version: res.version,
   warning: res.warning, latency_ms: res.latency_ms, period: res.period, period_label: res.period_label,
   sql: res.sql, columns: res.columns, rows: res.rows, row_count: res.row_count, truncated: res.truncated })
+
+// Gửi câu hỏi. Trợ lý trả theo luồng thì gọi onDraft({ text, tools }) mỗi khi có chữ mới / đang tra cứu,
+// để hiện dần câu trả lời thay vì chờ AI viết xong. Trả về kết quả cuối cùng như endpoint thường.
+export async function askAI(cfg, body, params, onDraft) {
+  if (!cfg.stream) return api.post(cfg.endpoint, body, params)
+  let draft = { text: '', tools: [] }
+  return api.stream(cfg.stream, body, (e) => {
+    if (e.type === 'text') draft = { ...draft, text: draft.text + e.text }
+    else if (e.type === 'reset') draft = { ...draft, text: '' }
+    else if (e.type === 'tool') draft = { ...draft, tools: [...draft.tools.filter((x) => x.name !== e.name), { name: e.name, label: e.label }] }
+    else return
+    onDraft(draft)
+  })
+}
+
+// Câu trả lời đang được viết: chưa có chữ thì hiện dấu chờ kèm công cụ đang tra, có chữ thì hiện dần
+export function PendingTurn({ cfg, draft, showName = true }) {
+  const tools = draft?.tools || []
+  return (
+    <div className={`turn-ai ${draft?.text ? 'is-streaming' : 'is-typing'}`} aria-busy="true">
+      <div className="ai-avatar"><Icon name="sparkles" /></div>
+      <div className="body">
+        {showName && <div className="who">{cfg.name}</div>}
+        {draft?.text ? <Markdown className="content" text={draft.text} /> : <>
+          <div className="typing"><span /><span /><span /></div>
+          {tools.length > 0 && <div className="typing-status"><Icon name="search" />{t('Đang tra cứu:')} {tools.map((x) => t(x.label)).join(', ')}</div>}
+        </>}
+      </div>
+    </div>
+  )
+}
 
 function ProductCard({ s, onCart }) {
   return (
@@ -161,6 +192,7 @@ export default function AIChat({ kind }) {
   const [search, setSearch] = useState('')
   const [text, setText] = useState('')
   const [pending, setPending] = useState(false)
+  const [draft, setDraft] = useState(null)  // câu trả lời đang được viết (trả theo luồng)
   const [version, setVersion] = useState('')
   const [collapsed, setCollapsed] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -183,7 +215,7 @@ export default function AIChat({ kind }) {
     input.current?.focus()
   }, [key, cfg.versions])
 
-  useEffect(() => { if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight }, [session.messages.length, pending])
+  useEffect(() => { if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight }, [session.messages.length, pending, draft])
 
   const open = async (id) => {
     if (pending) return
@@ -204,7 +236,7 @@ export default function AIChat({ kind }) {
     setPending(true)
     setSession((s) => ({ ...s, messages: [...s.messages, { role: 'user', content: q, created_at: new Date().toISOString() }] }))
     try {
-      const res = await api.post(cfg.endpoint, { ...cfg.body(q), session_id: session.id }, cfg.versions && version ? { version } : undefined)
+      const res = await askAI(cfg, { ...cfg.body(q), session_id: session.id }, cfg.versions && version ? { version } : undefined, setDraft)
       const meta = replyMeta(res)
       setSession((s) => ({ id: res.session_id, title: res.session_title,
         messages: [...s.messages, { id: res.message_id, role: 'assistant', content: res.answer, meta, created_at: new Date().toISOString() }] }))
@@ -214,11 +246,12 @@ export default function AIChat({ kind }) {
       setSession((s) => ({ ...s, messages: [...s.messages, { role: 'assistant', content: e.message, error: true }] }))
     } finally {
       setPending(false)
+      setDraft(null)
       input.current?.focus()
     }
   }
 
-  const copy = (tt) => navigator.clipboard?.writeText(tt).then(() => toast(t('Đã sao chép câu trả lời'), 'success'), () => toast(t('Trình duyệt không cho sao chép'), 'error'))
+  const copy =(tt) => navigator.clipboard?.writeText(tt).then(() => toast(t('Đã sao chép câu trả lời'), 'success'), () => toast(t('Trình duyệt không cho sao chép'), 'error'))
   const addToCart = (s) => navigate('/pos', { state: { addCode: s.code } })
 
   const doRename = async () => {
@@ -287,10 +320,7 @@ export default function AIChat({ kind }) {
             ) : session.messages.map((m, i) => (m.role === 'user' ? (
               <div key={m.id || `u${i}`} className="turn-user"><div className="bubble">{m.content}</div><div className="avatar">{initialsOf(user.full_name)}</div></div>
             ) : <AiTurn key={m.id || `a${i}`} m={m} cfg={cfg} onCart={addToCart} onCopy={copy} />))}
-            {pending && (
-              <div className="turn-ai is-typing"><div className="ai-avatar"><Icon name="sparkles" /></div>
-                <div className="body"><div className="who">{cfg.name}</div><div className="typing"><span /><span /><span /></div></div></div>
-            )}
+            {pending && <PendingTurn cfg={cfg} draft={draft} />}
           </div>
         </div>
         <div className="ai-composer-wrap">

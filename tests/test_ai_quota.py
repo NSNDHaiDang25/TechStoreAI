@@ -129,6 +129,28 @@ def test_timeout_switches_immediately():
     assert c.status()["models"][0]["reason"] == "busy"
 
 
+def test_timeout_rests_longer_and_escalates():
+    clock, calls, slow = Clock(), [], {"a"}
+
+    def handler(req):
+        calls.append(model_of(req))
+        if calls[-1] in slow:
+            raise httpx.ReadTimeout("slow", request=req)
+        return httpx.Response(200, json=OK)
+
+    c = make(handler, clock=clock)
+    c.generate("s", "u")
+    clock.t += 120
+    assert c.generate("s", "u").model == "b" and calls == ["a", "b", "b"]  # 2 phút sau vẫn không gọi lại model treo
+    clock.t += 200
+    c.generate("s", "u")  # hết 5 phút: thử lại a, vẫn treo
+    clock.t += 400
+    assert c.generate("s", "u").model == "b" and calls.count("a") == 2  # lần treo thứ hai nghỉ 10 phút
+    slow.clear()
+    clock.t += 300
+    assert c.generate("s", "u").model == "a"  # chạy lại được: quay về model chính
+
+
 def test_other_server_error_retries_then_switches():
     calls = []
 
@@ -275,3 +297,86 @@ def test_invalid_key_explains_how_to_fix_and_stops():
     assert "GEMINI_API_KEY" in str(e.value) and "OAuth" not in str(e.value)
     assert e.value.kind == "config"
     assert calls == ["a"]
+
+
+# ---------------- Trả theo luồng (SSE) ----------------
+def sse(*chunks) -> httpx.Response:
+    body = "".join(f"data: {json.dumps(c, ensure_ascii=False)}\r\n\r\n" for c in chunks).encode()
+    return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=body)
+
+
+def text_chunk(text):
+    return {"candidates": [{"content": {"role": "model", "parts": [{"text": text}]}}]}
+
+
+def test_stream_is_merged_and_text_shown_as_it_arrives():
+    fc = {"functionCall": {"name": "search_products", "args": {"keyword": "loa"}, "id": "c1"}, "thoughtSignature": "sig"}
+    replies = [sse({"candidates": [{"content": {"role": "model", "parts": [fc]}}]}),
+               sse(text_chunk("Loa A "), text_chunk("giá 300k"), {"candidates": [{"finishReason": "STOP"}]})]
+    c = make(lambda req: replies.pop(0))
+    r = c.chat("s", [{"role": "user", "parts": [{"text": "loa?"}]}], tools=[])
+    assert r.calls == [{"name": "search_products", "args": {"keyword": "loa"}, "id": "c1"}]
+    assert r.content["parts"] == [fc]  # giữ chữ ký suy luận để gửi lại ở lượt sau
+    shown = []
+    r = c.chat("s", [{"role": "user", "parts": [{"text": "loa?"}]}], tools=[], on_text=shown.append)
+    assert r.text == "Loa A giá 300k" and shown == ["Loa A ", "giá 300k"]
+
+
+def test_silent_model_is_dropped_early_only_when_another_model_is_left():
+    reads = []
+
+    def handler(req):
+        reads.append((model_of(req), req.extensions["timeout"]["read"]))
+        return sse(text_chunk("ok"))
+
+    c = make(handler, models=("a", "b"))
+    c.timeout = 30
+    c.generate("s", "u")
+    c._rest("b", 600, "busy")
+    c.generate("s", "u")  # chỉ còn a: chờ đủ thời gian
+    assert reads == [("a", 12), ("a", 30)]
+
+
+def test_stalled_stream_switches_model_and_discards_partial_text():
+    class Stalled(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b'data: {"candidates": [{"content": {"parts": [{"text": "Doanh thu "}]}}]}\r\n\r\n'
+            raise httpx.ReadTimeout("stalled")
+
+    def handler(req):
+        if model_of(req) == "a":
+            return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=Stalled())
+        return sse(text_chunk("Doanh thu 5 triệu"))
+
+    shown = []
+    r = make(handler, models=("a", "b")).chat("s", [{"role": "user", "parts": [{"text": "?"}]}], tools=[], on_text=shown.append)
+    assert r.model == "b" and r.text == "Doanh thu 5 triệu"
+    assert shown == ["Doanh thu ", None, "Doanh thu 5 triệu"]  # None: bỏ phần chữ của model treo
+
+
+def test_error_inside_stream_is_handled_like_normal_error():
+    def handler(req):
+        if model_of(req) == "a":
+            return sse({"error": {"code": 503, "message": "overloaded"}})
+        return sse(text_chunk("ok"))
+
+    assert make(handler).generate("s", "u").model == "b"
+
+
+def test_assistant_stream_sends_text_tools_then_result(client, owner_h, fake_ai):
+    fake_ai.chat_script = [[{"name": "list_categories", "args": {}}], "Cửa hàng có 1 nhóm hàng"]
+    with client.stream("POST", "/api/ai/assistant/stream", json={"message": "Có mấy nhóm hàng?"}, headers=owner_h) as r:
+        assert r.status_code == 200 and r.headers["content-type"].startswith("application/x-ndjson")
+        events = [json.loads(line) for line in r.iter_lines() if line]
+    kinds = [e["type"] for e in events]
+    assert kinds[-1] == "done" and "tool" in kinds
+    assert "".join(e["text"] for e in events if e["type"] == "text") == "Cửa hàng có 1 nhóm hàng"
+    done = events[-1]
+    assert done["answer"] == "Cửa hàng có 1 nhóm hàng" and done["source"] == "ai" and done["session_id"]
+    saved = client.get(f"/api/ai/sessions/{done['session_id']}", headers=owner_h).json()
+    assert [m["content"] for m in saved["messages"]] == ["Có mấy nhóm hàng?", "Cửa hàng có 1 nhóm hàng"]
+
+
+def test_assistant_stream_unknown_session_is_404(client, owner_h):
+    r = client.post("/api/ai/assistant/stream", json={"message": "hi", "session_id": 9999}, headers=owner_h)
+    assert r.status_code == 404

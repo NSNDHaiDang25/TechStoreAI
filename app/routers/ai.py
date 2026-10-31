@@ -1,4 +1,11 @@
+import contextvars
+import json
+import logging
+import queue
+import threading
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -11,6 +18,7 @@ from app.security import ADMIN_ONLY, ALL_STAFF, ANY_ROLE, MANAGERS
 from app.services import ai_log, app_settings, export
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
+log = logging.getLogger("ai")
 
 
 @router.get("/status")
@@ -40,17 +48,57 @@ def _session_for(db: Session, user: User, kind: str, session_id: int | None, tex
         raise HTTPException(404, "Không tìm thấy cuộc trò chuyện")
 
 
+def _assistant_turn(db: Session, client: GeminiClient, user: User, session: ChatSession, message: str, emit=None) -> dict:
+    result = assistant.reply(db, client, user, message, history.recent_history(session, 10), emit=emit)
+    ai_log.record(db, user, "assistant", message, result, model=client.model)
+    meta = {k: result.get(k) for k in ("suggestions", "tools", "source", "warning", "latency_ms", "model", "period", "period_label")}
+    reply = history.append_turn(db, session, message, result["answer"], meta)
+    db.commit()
+    return {**result, "session_id": session.id, "session_title": session.title, "message_id": reply.id}
+
+
 @router.post("/assistant")
 def assistant_chat(data: ChatIn, db: Session = Depends(get_db), client: GeminiClient = Depends(ai_log.configured_client),
                    user: User = Depends(ALL_STAFF), _: User = Depends(ai_log.ai_guard)):
     """Trợ lý đa năng: AI tự gọi công cụ tra cứu phù hợp với vai trò người dùng."""
     session = _session_for(db, user, "assistant", data.session_id, data.message)
-    result = assistant.reply(db, client, user, data.message, history.recent_history(session, 10))
-    ai_log.record(db, user, "assistant", data.message, result, model=client.model)
-    meta = {k: result.get(k) for k in ("suggestions", "tools", "source", "warning", "latency_ms", "model", "period", "period_label")}
-    reply = history.append_turn(db, session, data.message, result["answer"], meta)
-    db.commit()
-    return {**result, "session_id": session.id, "session_title": session.title, "message_id": reply.id}
+    return _assistant_turn(db, client, user, session, data.message)
+
+
+@router.post("/assistant/stream")
+def assistant_stream(data: ChatIn, db: Session = Depends(get_db), client: GeminiClient = Depends(ai_log.configured_client),
+                     user: User = Depends(ALL_STAFF), _: User = Depends(ai_log.ai_guard)):
+    """Như /assistant nhưng trả từng dòng JSON (NDJSON) ngay khi có: {"type": "text" | "reset" | "tool", ...}
+    trong lúc AI làm việc, cuối cùng {"type": "done", ...kết quả như /assistant} hoặc {"type": "error", "message"}.
+    Giao diện hiện dần câu trả lời thay vì chờ AI viết xong."""
+    session = _session_for(db, user, "assistant", data.session_id, data.message)
+    events: queue.Queue = queue.Queue()
+
+    def work():  # chạy ở luồng riêng, đẩy sự kiện vào hàng đợi; kết quả vẫn lưu dù người dùng đã đóng trang
+        try:
+            events.put({"type": "done", **_assistant_turn(db, client, user, session, data.message, emit=events.put)})
+        except Exception:
+            log.exception("Trợ lý AI lỗi khi trả lời theo luồng")
+            db.rollback()
+            events.put({"type": "error", "message": "Trợ lý gặp lỗi khi trả lời, hãy thử lại"})
+
+    # Chép context (ngôn ngữ trả lời của người hỏi...) sang luồng mới
+    worker = threading.Thread(target=contextvars.copy_context().run, args=(work,), daemon=True)
+    worker.start()
+
+    def lines():
+        try:
+            while True:
+                event = events.get()
+                yield json.dumps(event, ensure_ascii=False, default=str) + "\n"
+                if event["type"] in ("done", "error"):
+                    return
+        finally:
+            worker.join()  # người dùng đóng trang giữa chừng: chờ lưu xong rồi mới trả phiên CSDL
+
+    # X-Accel-Buffering: proxy (Render, nginx) không gom lại mà chuyển từng dòng ngay
+    return StreamingResponse(lines(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.post("/advisor")

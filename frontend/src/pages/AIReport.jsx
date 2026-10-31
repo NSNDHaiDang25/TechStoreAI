@@ -1,6 +1,6 @@
 // AI sinh báo cáo doanh thu (UC-35, SRS 6.4): hệ thống tính số liệu, AI viết nhận xét và khuyến nghị nhập hàng
 import { useState } from 'react'
-import { api, getToken } from '../api.js'
+import { api, apiUrl, getToken } from '../api.js'
 import { daysAgo, money, num, today } from '../format.js'
 import Icon from '../ui/Icon.jsx'
 import { Empty, useToast } from '../ui/kit.jsx'

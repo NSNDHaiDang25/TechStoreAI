@@ -33,4 +33,16 @@ def _dump(value: Any) -> str | None:
 def log(db: Session, user: User | None, action: str, entity: str, entity_id: int | None = None,
         old: Any = None, new: Any = None) -> None:
     db.add(AuditLog(user_id=user.id if user else None, action=action, entity=entity, entity_id=entity_id,
-                    old_value=_dump(old), new_value=_dump(new), ip_address=client_ip.get()))
+                    old_value=_dump(old), new_value=_dump(new), ip_address=client_ip.get(),
+                    branch_id=_branch_of(db, user, entity, entity_id)))
+
+
+def _branch_of(db: Session, user: User | None, entity: str, entity_id: int | None) -> int | None:
+    """Chi nhánh của thao tác: chi nhánh người thực hiện. Quản trị viên (không thuộc chi nhánh) thao tác trên
+    một tài khoản (tạo, sửa, đặt lại mật khẩu...) thì tính vào chi nhánh của tài khoản đó."""
+    if user is not None and user.branch_id:
+        return user.branch_id
+    if entity == "users" and entity_id:
+        target = db.get(User, entity_id)
+        return target.branch_id if target else None
+    return None

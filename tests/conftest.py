@@ -53,7 +53,8 @@ class FakeAI:
         return {"active_model": self.model if self.available else None,
                 "models": [{"model": self.model, "available": self.available, "reason": None, "until": None}]}
 
-    def chat(self, system, contents, *, tools, temperature=0.3, force_text=False, feature="unknown", model=None):
+    def chat(self, system, contents, *, tools, temperature=0.3, force_text=False, feature="unknown", model=None,
+             on_text=None):
         self.calls.append({"system": system, "contents": copy.deepcopy(contents), "tools": tools,
                            "force_text": force_text, "feature": feature, "model": model})
         step = self.chat_script.pop(0) if self.chat_script else "ok"
@@ -62,6 +63,10 @@ class FakeAI:
         if isinstance(step, list):
             return ChatReply(text="", calls=step, content={"role": "model", "parts": [{"functionCall": c} for c in step]},
                              model=self.model, latency_ms=5)
+        if on_text:  # giả lập trả theo luồng: gửi chữ thành hai đoạn
+            half = len(step) // 2
+            on_text(step[:half])
+            on_text(step[half:])
         return ChatReply(text=step, calls=[], content={"role": "model", "parts": [{"text": step}]},
                          model=self.model, latency_ms=5)
 

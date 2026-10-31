@@ -32,6 +32,17 @@ def now() -> datetime:
 
 
 # ======================================================================= Hệ thống và bảo mật
+class Branch(Base):
+    """Chi nhánh (cơ sở) của cửa hàng. Chủ cửa hàng và nhân viên thuộc một chi nhánh; thao tác của họ
+    được ghi nhật ký kèm chi nhánh để quản trị viên xem riêng từng cơ sở."""
+    __tablename__ = "branches"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    address: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -44,11 +55,17 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Tự đăng ký ở màn hình đăng nhập: bị khóa và chờ quản trị viên duyệt (phân biệt với tài khoản bị khóa thường)
     pending: Mapped[bool] = mapped_column(Boolean, default=False)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), index=True)  # quản trị viên: không thuộc chi nhánh
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0)       # FR-AUT-03
     locked_until: Mapped[datetime | None] = mapped_column(DateTime)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, onupdate=now)
+    branch: Mapped[Branch | None] = relationship()
+
+    @property
+    def branch_name(self) -> str | None:
+        return self.branch.name if self.branch else None
 
 
 class FaceProfile(Base):
@@ -101,8 +118,10 @@ class AuditLog(Base):
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
     ip_address: Mapped[str | None] = mapped_column(String(45))
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), index=True)  # chi nhánh nơi thao tác
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     user: Mapped[User | None] = relationship()
+    branch: Mapped[Branch | None] = relationship()
 
 
 class EmailLog(Base):

@@ -1,4 +1,5 @@
 // Bộ icon dạng nét (lấy từ giao diện cũ, nguồn Lucide, giấy phép ISC)
+import { useId } from 'react'
 const ICONS = {
   store: '<path d="m2 7 4.4-4.4A2 2 0 0 1 7.8 2h8.4a2 2 0 0 1 1.4.6L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/><path d="M22 7v3a2 2 0 0 1-2 2 2.7 2.7 0 0 1-2-.8 2.7 2.7 0 0 1-2 .8 2.7 2.7 0 0 1-2-.8 2.7 2.7 0 0 1-2 .8 2.7 2.7 0 0 1-2-.8 2.7 2.7 0 0 1-2 .8 2.7 2.7 0 0 1-2-.8A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7"/>',
   dashboard: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
@@ -68,6 +69,18 @@ const ICONS = {
   key: '<path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/>',
   bell: '<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33"/>',
   globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+}
+
+// Icon tô nét bằng gradient. Gradient khai báo ngay trong chính SVG này (id riêng cho từng icon) để trình duyệt
+// luôn tìm thấy; tham chiếu gradient nằm ở SVG khác qua CSS dễ bị bỏ qua và icon thành vô hình.
+export function GradientIcon({ name, from, to, className = '' }) {
+  const id = `ig${useId().replace(/[^a-zA-Z0-9]/g, '')}`
+  return (
+    <svg className={`i ${className}`} viewBox="0 0 24 24" fill="none" stroke={`url(#${id})`} strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: `<defs><linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="3" y1="3" x2="21" y2="21">`
+        + `<stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs>${ICONS[name] || ''}` }} />
+  )
 }
 
 export default function Icon({ name, className = '' }) {
