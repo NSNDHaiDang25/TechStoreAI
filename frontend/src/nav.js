@@ -31,6 +31,7 @@ export const NAV = [
   ] },
   { group: t('Hệ thống'), items: [
     { to: '/users', label: t('Người dùng'), icon: 'shield', roles: ['admin'] },
+    { to: '/branches', label: t('Chi nhánh'), icon: 'store', roles: ['admin'] },
     { to: '/settings', label: t('Cấu hình'), icon: 'settings', roles: ['owner', 'admin'] },
     { to: '/audit', label: t('Nhật ký thao tác'), icon: 'clipboard', roles: ['owner', 'admin'] },
     { to: '/system', label: t('Sao lưu dữ liệu'), icon: 'database', roles: ['admin'] },

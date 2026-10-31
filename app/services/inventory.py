@@ -15,6 +15,7 @@ from app.models import (
     Category, Customer, ImportItem, ImportReceipt, Invoice, InvoiceItem, Product, StockMovement, User, now,
 )
 from app.schemas import ImportIn, InvoiceIn, NewProductIn
+from app.services.branch_scope import ALL_BRANCHES
 
 
 class BusinessError(Exception):
@@ -77,7 +78,8 @@ def create_import(db: Session, data: ImportIn, user: User, at: datetime | None =
 
 def _new_product_code(db: Session) -> str:
     """Mã tự sinh cho sản phẩm tạo khi nhập hàng: SP0001, SP0002..."""
-    nums = [int(c[2:]) for c in db.scalars(select(Product.code).where(Product.code.like("SP%"))) if c[2:].isdigit()]
+    nums = [int(c[2:]) for c in db.scalars(select(Product.code).where(Product.code.like("SP%")).execution_options(**ALL_BRANCHES))
+            if c[2:].isdigit()]  # SKU không trùng giữa các chi nhánh
     return f"SP{max(nums, default=0) + 1:04d}"
 
 
@@ -87,7 +89,7 @@ def _create_product(db: Session, spec: NewProductIn, unit_cost: int) -> Product:
     if name.casefold() in {n.casefold() for n in db.scalars(select(Product.name))}:
         raise BusinessError(f"Sản phẩm '{name}' đã có trong danh mục, hãy chọn sản phẩm có sẵn thay vì tạo mới")
     code = (spec.code or "").strip().upper() or _new_product_code(db)
-    if db.scalar(select(Product.id).where(func.upper(Product.code) == code)):
+    if db.scalar(select(Product.id).where(func.upper(Product.code) == code).execution_options(**ALL_BRANCHES)):
         raise BusinessError(f"Mã sản phẩm '{code}' đã tồn tại")
     if spec.category_id is not None and db.get(Category, spec.category_id) is None:
         raise BusinessError("Nhóm hàng không tồn tại")

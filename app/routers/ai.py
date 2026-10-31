@@ -35,10 +35,11 @@ def ai_status(db: Session = Depends(get_db), client: GeminiClient = Depends(get_
 
 @router.get("/logs")
 def ai_logs(feature: str | None = None, status: str | None = None, user_id: int | None = None,
+            branch_id: int | None = Query(None, description="Quản trị viên lọc theo chi nhánh; 0 = không thuộc chi nhánh"),
             page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200),
             db: Session = Depends(get_db), user: User = Depends(ANY_ROLE)):
-    """Nhật ký gọi AI. Quản trị viên, chủ cửa hàng xem tất cả; nhân viên chỉ xem lượt của mình."""
-    return ai_log.list_logs(db, user, feature, status, user_id, page, size)
+    """Nhật ký gọi AI. Quản trị viên xem mọi chi nhánh, chủ cửa hàng xem chi nhánh mình; nhân viên chỉ xem lượt của mình."""
+    return ai_log.list_logs(db, user, feature, status, user_id, page, size, branch_id)
 
 
 def _session_for(db: Session, user: User, kind: str, session_id: int | None, text: str) -> ChatSession:

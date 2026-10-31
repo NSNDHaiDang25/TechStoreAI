@@ -162,7 +162,8 @@ function ImportDialog({ onClose, onDone }) {
       <button className="btn" disabled={!file || busy} onClick={() => send(true)}><Icon name="eye" />{t('Kiểm tra tệp')}</button>
       <button className="btn primary" disabled={!ok || busy} onClick={() => send(false)}><Icon name="upload" />{t('Nhập')} {ok ? t('{0} sản phẩm', [res.to_create]) : ''}</button>
     </>}>
-      <p className="mt-0">{t('Điền tệp theo mẫu (cột bắt buộc:')} <code>sku</code>, <code>ten</code>, <code>gia_ban</code>{t('). Bỏ trống VAT, bảo hành thì lấy theo nhóm hàng; nhóm hàng chưa có sẽ được tạo mới. SKU đã có trong hệ thống sẽ được bỏ qua. Tồn đầu kỳ nhập bằng phiếu nhập.')}</p>
+      <p className="mt-0">{t('Điền tệp theo mẫu (cột bắt buộc:')} <code>sku</code>, <code>ten</code>, <code>gia_ban</code>{t('). Bỏ trống VAT, bảo hành thì lấy theo nhóm hàng; nhóm hàng chưa có sẽ được tạo mới. SKU đã có trong hệ thống sẽ được bỏ qua. Tồn đầu kỳ nhập bằng phiếu nhập.')}
+        {' '}{t('Cột')} <code>link_anh</code> {t('nhận link ảnh http(s) hoặc link chia sẻ Google Drive công khai.')}</p>
       <div className="import-pick mb-4">
         <FileDrop file={file} onFile={(f) => { setFile(f); setRes(null) }} fileIcon="file"
           accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
@@ -187,8 +188,8 @@ function ImportDialog({ onClose, onDone }) {
         )}
         {res.preview.length > 0 && (
           <div className="table-wrap"><table>
-            <thead><tr><th>{t('Dòng')}</th><th>SKU</th><th>{t('Tên')}</th><th>{t('Nhóm')}</th><th className="right">{t('Giá bán')}</th><th>Serial</th></tr></thead>
-            <tbody>{res.preview.map((p) => <tr key={p.line}><td>{p.line}</td><td>{p.sku}</td><td>{p.name}</td><td>{p.category || '-'}</td>
+            <thead><tr><th>{t('Dòng')}</th><th>{t('Ảnh')}</th><th>SKU</th><th>{t('Tên')}</th><th>{t('Nhóm')}</th><th className="right">{t('Giá bán')}</th><th>Serial</th></tr></thead>
+            <tbody>{res.preview.map((p) => <tr key={p.line}><td>{p.line}</td><td><Thumb url={p.image_url} name={p.name} size="sm" /></td><td>{p.sku}</td><td>{p.name}</td><td>{p.category || '-'}</td>
               <td className="right num">{money(p.sale_price)}</td><td>{p.track_serial ? t('Có') : ''}</td></tr>)}</tbody>
           </table></div>
         )}

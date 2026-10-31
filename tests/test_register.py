@@ -18,7 +18,7 @@ def user_named(client, admin_h, username):
     return next(u for u in client.get("/api/users", headers=admin_h).json() if u["username"] == username)
 
 
-def test_register_waits_for_admin_approval(client, admin_h):
+def test_register_waits_for_admin_approval(client, admin_h, branch_id):
     r = register(client)
     assert r.status_code == 201, r.text
     r = login(client, "nguyenvanan", "matkhau123")
@@ -28,7 +28,9 @@ def test_register_waits_for_admin_approval(client, admin_h):
     u = user_named(client, admin_h, "nguyenvanan")
     assert u["pending"] is True and u["is_active"] is False and u["role"] == "staff"
     r = client.put(f"/api/users/{u['id']}", json={"is_active": True}, headers=admin_h)
-    assert r.status_code == 200 and r.json()["pending"] is False
+    assert r.status_code == 400 and "chi nhánh" in r.json()["detail"]  # duyệt phải chọn chi nhánh
+    r = client.put(f"/api/users/{u['id']}", json={"is_active": True, "branch_id": branch_id}, headers=admin_h)
+    assert r.status_code == 200 and r.json()["pending"] is False and r.json()["branch_id"] == branch_id
 
     r = login(client, "nguyenvanan", "matkhau123")
     assert r.status_code == 200, r.text
@@ -56,12 +58,10 @@ def test_register_validates_input(client, field, value):
     assert register(client, **{field: value}).status_code == 422
 
 
-def test_admin_rejects_only_pending_accounts(client, admin_h, owner_h):
+def test_admin_rejects_pending_accounts(client, admin_h, owner_h):
     register(client)
     pending = user_named(client, admin_h, "nguyenvanan")
-    staff = user_named(client, admin_h, "staff")
     assert client.delete(f"/api/users/{pending['id']}", headers=owner_h).status_code == 403
-    assert client.delete(f"/api/users/{staff['id']}", headers=admin_h).status_code == 400  # đã dùng: chỉ khóa, không xóa
     r = client.delete(f"/api/users/{pending['id']}", headers=admin_h)
     assert r.status_code == 200, r.text
     assert all(u["username"] != "nguyenvanan" for u in client.get("/api/users", headers=admin_h).json())

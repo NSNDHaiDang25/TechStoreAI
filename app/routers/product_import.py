@@ -24,6 +24,7 @@ from app.schemas import ProductIn
 from app.security import MANAGERS
 from app.services import audit
 from app.services.export import MEDIA, to_csv
+from app.services.branch_scope import ALL_BRANCHES
 
 router = APIRouter(prefix="/api", tags=["catalog"])
 
@@ -43,6 +44,7 @@ COLUMNS = [
     ("ton_toi_thieu", "min_stock", False, "3"),
     ("theo_serial", "track_serial", False, "1"),
     ("mo_ta", "description", False, "Chống ồn chủ động, pin 30 giờ"),
+    ("link_anh", "image_url", False, "https://example.com/anh/tai-nghe-sony-wh1000xm5.jpg"),
 ]
 # Chấp nhận cả tên cột tiếng Việt có dấu / tiếng Anh thường gặp
 ALIASES = {
@@ -58,7 +60,10 @@ ALIASES = {
     "ton_toi_thieu": "min_stock", "tồn tối thiểu": "min_stock", "min_stock": "min_stock",
     "theo_serial": "track_serial", "serial": "track_serial", "track_serial": "track_serial",
     "mo_ta": "description", "mô tả": "description", "description": "description",
+    "link_anh": "image_url", "link ảnh": "image_url", "anh": "image_url", "ảnh": "image_url", "hinh_anh": "image_url",
+    "hình ảnh": "image_url", "url_anh": "image_url", "image": "image_url", "image_url": "image_url",
 }
+MAX_URL = 255  # độ dài cột products.image_url
 INT_FIELDS = {"sale_price", "cost_price", "vat_rate", "warranty_months", "min_stock"}
 
 
@@ -76,6 +81,8 @@ COLUMN_HELP = {
     "ton_toi_thieu": "Tồn tối thiểu để cảnh báo sắp hết",
     "theo_serial": "1 = quản lý theo số serial / IMEI, 0 = không",
     "mo_ta": "Mô tả ngắn",
+    "link_anh": "Link ảnh sản phẩm, bắt đầu bằng http:// hoặc https:// (link chia sẻ Google Drive công khai cũng được). "
+                "Bỏ trống: không có ảnh, tải ảnh sau ở màn hình Sản phẩm",
 }
 
 
@@ -137,22 +144,51 @@ def _cell(v) -> str:
 
 
 def _xlsx_rows(data: bytes) -> list[list[str]]:
-    """Đọc trang đầu tiên của tệp .xlsx (giá trị đã tính của công thức)."""
+    """Đọc trang đầu tiên của tệp .xlsx (giá trị đã tính của công thức).
+    Ô link ảnh chèn dạng siêu liên kết (chữ hiển thị khác địa chỉ) thì lấy địa chỉ của liên kết."""
     from openpyxl import load_workbook
 
     try:
-        wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        # Không dùng read_only: chế độ đó không đọc được siêu liên kết. Tệp tối đa 5 MB nên vẫn nhẹ.
+        wb = load_workbook(io.BytesIO(data), data_only=True)
     except (zipfile.BadZipFile, KeyError, ValueError, OSError):
         raise HTTPException(400, "Không đọc được tệp Excel. Hãy lưu lại dưới dạng .xlsx (Excel Workbook)")
     try:
-        rows = []
-        for r in wb.worksheets[0].iter_rows(values_only=True):
+        rows: list[list[str]] = []
+        link_cols: set[int] = set()
+        for cells in wb.worksheets[0].iter_rows():
             if len(rows) > MAX_ROWS + 1:
                 break  # quá giới hạn: parse_table báo lỗi, không đọc tiếp
-            rows.append([_cell(v) for v in r])
+            row = [_cell(c.value) for c in cells]
+            if not rows:  # dòng tiêu đề: tìm cột link ảnh
+                link_cols = {i for i, h in enumerate(row) if ALIASES.get(h.strip().lower()) == "image_url"}
+            else:
+                for i in link_cols:
+                    link = cells[i].hyperlink if i < len(cells) else None
+                    if link is not None and link.target and not row[i].lower().startswith(("http://", "https://")):
+                        row[i] = link.target
+            rows.append(row)
         return rows
     finally:
         wb.close()
+
+
+_DRIVE_ID = re.compile(r"drive\.google\.com/(?:file/d/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]{10,})")
+
+
+def image_link(raw: str) -> str | None:
+    """Kiểm tra link ảnh. Link chia sẻ Google Drive đổi sang link xem ảnh trực tiếp. Sai định dạng: ValueError."""
+    v = raw.strip()
+    if not v:
+        return None
+    m = _DRIVE_ID.search(v)
+    if m:
+        v = f"https://drive.google.com/thumbnail?id={m.group(1)}&sz=w800"
+    if not re.fullmatch(r"https?://[^\s<>\"']+", v, re.I):
+        raise ValueError("Link ảnh phải bắt đầu bằng http:// hoặc https:// và không có khoảng trắng")
+    if len(v) > MAX_URL:
+        raise ValueError(f"Link ảnh dài quá {MAX_URL} ký tự")
+    return v
 
 
 def _table(data: bytes, filename: str | None) -> list[list[str]]:
@@ -212,6 +248,11 @@ def parse_table(table: list[list[str]]) -> tuple[list[dict], list[dict]]:
     for line_no, r in enumerate(rows[1:], start=2):
         raw = {f: (r[i].strip() if i < len(r) else "") for i, f in enumerate(header) if f}
         try:
+            image = image_link(raw.pop("image_url", ""))
+        except ValueError as e:
+            errors.append({"line": line_no, "sku": raw.get("code", ""), "error": str(e)})
+            continue
+        try:
             fields: dict = {}
             for f, v in raw.items():
                 if f in INT_FIELDS:
@@ -227,7 +268,7 @@ def parse_table(table: list[list[str]]) -> tuple[list[dict], list[dict]]:
             msg = "; ".join(str(x["msg"]).replace("Value error, ", "") for x in e.errors()) if isinstance(e, ValidationError) else "Số không hợp lệ"
             errors.append({"line": line_no, "sku": raw.get("code", ""), "error": msg})
             continue
-        good.append({"line": line_no, "data": data})
+        good.append({"line": line_no, "data": data, "image_url": image})
     return good, errors
 
 
@@ -240,13 +281,17 @@ async def import_products(file: UploadFile = File(...), dry_run: bool = Query(Fa
     good, errors = parse_table(_table(data, file.filename))
 
     # Trùng SKU / mã vạch trong tệp và với dữ liệu đã có
+    # SKU đã có ở chi nhánh mình: bỏ qua; đã dùng ở chi nhánh khác: lỗi (SKU, mã vạch không trùng toàn hệ thống)
     existing_codes = {c.upper() for c in db.scalars(select(Product.code))}
-    existing_barcodes = {b for b in db.scalars(select(Product.barcode).where(Product.barcode.is_not(None)))}
+    other_codes = {c.upper() for c in db.scalars(select(Product.code).execution_options(**ALL_BRANCHES))} - existing_codes
+    existing_barcodes = {b for b in db.scalars(select(Product.barcode).where(Product.barcode.is_not(None)).execution_options(**ALL_BRANCHES))}
     seen_codes, seen_barcodes, to_create, skipped = set(), set(), [], []
     for row in good:
         d = row["data"]
         if d.code.upper() in existing_codes:
             skipped.append({"line": row["line"], "sku": d.code, "reason": "SKU đã có, bỏ qua"})
+        elif d.code.upper() in other_codes:
+            errors.append({"line": row["line"], "sku": d.code, "error": "SKU đã được dùng ở chi nhánh khác"})
         elif d.code.upper() in seen_codes:
             errors.append({"line": row["line"], "sku": d.code, "error": "SKU bị lặp trong tệp"})
         elif d.barcode and (d.barcode in existing_barcodes or d.barcode in seen_barcodes):
@@ -258,6 +303,7 @@ async def import_products(file: UploadFile = File(...), dry_run: bool = Query(Fa
             to_create.append(row)
     errors.sort(key=lambda e: e["line"])
     preview = [{"line": r["line"], "sku": r["data"].code, "name": r["data"].name, "category": r["data"].category_name,
+                "image_url": r["image_url"],
                 "sale_price": r["data"].sale_price, "track_serial": r["data"].track_serial} for r in to_create[:200]]
     result = {"dry_run": dry_run, "to_create": len(to_create), "skipped": skipped, "errors": errors, "preview": preview}
     if dry_run or errors:
@@ -279,7 +325,7 @@ async def import_products(file: UploadFile = File(...), dry_run: bool = Query(Fa
                 categories[name.lower()] = cat
             fields["category_id"] = cat.id
         _apply_category_defaults(db, fields)
-        db.add(Product(**fields, stock=0))
+        db.add(Product(**fields, stock=0, image_url=row["image_url"]))
     db.flush()
     audit.log(db, user, "PRODUCT_IMPORT", "products", None,
               new={"file": file.filename, "created": len(to_create), "skipped": len(skipped)})

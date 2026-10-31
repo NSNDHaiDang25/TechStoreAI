@@ -1043,8 +1043,52 @@ body.fab-open.fab-left #toast-root { right: 20px; }  /* khung chat đang ở mé
 .file-drop .fd-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .file-drop .fd-name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-drop .fd-hint { color: var(--muted); font-size: var(--fs-xs); }
+/* Quét mã bằng camera: khung hình ngang, khung ngắm giữa có vạch quét đỏ, danh sách mã vừa quét */
+.scan-camera-btn { color: var(--primary); }
+.scan-cam { position: relative; aspect-ratio: 4 / 3; border-radius: var(--radius); overflow: hidden; background: #0b0f17; }
+.scan-cam video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-cam-frame { position: absolute; left: 10%; right: 10%; top: 30%; bottom: 30%; border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, .38); border: 2px solid rgba(255, 255, 255, .85); overflow: hidden; transition: border-color .15s; }
+.scan-cam.busy .scan-cam-frame { border-color: var(--success); }
+.scan-cam-line { position: absolute; left: 4%; right: 4%; top: 50%; height: 2px; background: #ff3b3b; box-shadow: 0 0 10px #ff3b3b;
+  animation: scan-cam-sweep 1.8s ease-in-out infinite alternate; }
+@keyframes scan-cam-sweep { from { top: 12%; } to { top: 88%; } }
+@media (prefers-reduced-motion: reduce) { .scan-cam-line { animation: none; } }
+.scan-cam-hint { margin: var(--space-3) 0 0; }
+.scan-log-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.scan-log-list li { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  font-size: var(--fs-sm); background: var(--surface-2); min-width: 0; }
+.scan-log-list li .i { width: 16px; height: 16px; flex: none; }
+.scan-log-list li.ok .i { color: var(--success); }
+.scan-log-list li.bad { background: var(--danger-soft); }
+.scan-log-list li.bad .i, .scan-log-list li.bad .text { color: var(--danger); }
+.scan-log-list .code { font-family: ui-monospace, Consolas, monospace; font-weight: 600; flex: none; }
+.scan-log-list .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+
 /* Nhập sản phẩm: khung chọn tệp, dưới là các nút tải tệp mẫu */
 .import-pick { display: flex; flex-direction: column; gap: var(--space-2); }
+
+/* ---------- Chi nhánh (quản trị viên): lưới thẻ chi nhánh, chi tiết chi nhánh ---------- */
+.branch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); }
+.branch-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); text-align: left; font: inherit; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: border-color .15s, transform .15s, box-shadow .15s; }
+.branch-card:hover, .branch-card:focus-visible { border-color: var(--primary-solid); box-shadow: var(--shadow-md); transform: translateY(-1px); outline: none; }
+.branch-card.inactive { opacity: .65; }
+.branch-card-top { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.branch-icon { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: var(--radius-sm); background: var(--brand-gradient); color: var(--on-accent); }
+.branch-icon .i { width: 18px; height: 18px; }
+.branch-name { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-counts { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--fs-sm); color: var(--text-2); }
+.branch-counts span { display: inline-flex; align-items: center; gap: var(--space-1); }
+.branch-counts .i { width: 14px; height: 14px; color: var(--muted); }
+.branch-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.branch-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.branch-stats > div { display: flex; flex-direction: column; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.branch-stats .value { font-size: var(--fs-xl); font-weight: 700; color: var(--heading); }
+.branch-stats .label { font-size: var(--fs-xs); color: var(--muted); }
+.branch-add { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.branch-add select { flex: 1 1 260px; min-width: 0; }
 
 /* ---------- Nhật ký thao tác: mô tả + xuất Excel, tab chi nhánh gạch chân, hàng bộ lọc, cột trước -> sau ---------- */
 .audit-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }

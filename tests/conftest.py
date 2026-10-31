@@ -10,8 +10,9 @@ from app.ai.client import AIResult, ChatReply, get_ai_client
 from app.config import settings
 from app.database import Base, get_db, make_engine
 from app.main import app
-from app.models import Category, Customer, Product, User
+from app.models import Branch, Category, Customer, Product, User
 from app.security import hash_password
+from app.services.branch_scope import set_scope
 
 # Mỗi test tạo 3 tài khoản: băm bcrypt ở mức thấp nhất (4) cho nhanh, thuật toán vẫn như khi chạy thật
 security.BCRYPT_ROUNDS = 4
@@ -84,23 +85,37 @@ def db(engine):
     Session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     session = Session()
     admin = User(username="admin", full_name="Admin", password_hash=hash_password("admin123"), role="admin")
-    owner = User(username="owner", full_name="Chủ", password_hash=hash_password("owner123"), role="owner")
-    staff = User(username="staff", full_name="Nhân viên", password_hash=hash_password("staff123"), role="staff")
+    # Chủ cửa hàng, nhân viên và dữ liệu mẫu thuộc "Chi nhánh chính" (mỗi chi nhánh độc lập)
+    main = Branch(name="Chi nhánh chính")
+    session.add(main)
+    session.flush()
+    # Phiên CSDL của test làm việc trong chi nhánh chính: dữ liệu test thêm thẳng vào CSDL tự gắn chi nhánh này
+    set_scope(session, main.id)
+    owner = User(username="owner", full_name="Chủ", password_hash=hash_password("owner123"), role="owner",
+                 branch_id=main.id)
+    staff = User(username="staff", full_name="Nhân viên", password_hash=hash_password("staff123"), role="staff",
+                 branch_id=main.id)
     acc = Category(name="Phụ kiện")
     session.add_all([admin, owner, staff, acc])
     session.flush()
     session.add_all([
         Product(code="PK001", name="Tai nghe Bluetooth A1", category_id=acc.id, sale_price=350_000,
-                cost_price=220_000, stock=12, description="Pin 20 giờ"),
+                cost_price=220_000, stock=12, description="Pin 20 giờ", branch_id=main.id),
         Product(code="PK002", name="Tai nghe Bluetooth A2 Pro", category_id=acc.id, sale_price=490_000,
-                cost_price=310_000, stock=0, description="Pin 30 giờ, chống ồn"),
+                cost_price=310_000, stock=0, description="Pin 30 giờ, chống ồn", branch_id=main.id),
         Product(code="PK003", name="Sạc nhanh 20W", category_id=acc.id, sale_price=190_000,
-                cost_price=95_000, stock=50, description="Sạc nhanh PD"),
-        Customer(code="KH0001", name="Phạm Minh Anh", phone="0901234567", group="vip"),
+                cost_price=95_000, stock=50, description="Sạc nhanh PD", branch_id=main.id),
+        Customer(code="KH0001", name="Phạm Minh Anh", phone="0901234567", group="vip", branch_id=main.id),
     ])
     session.commit()
     yield session
     session.close()
+
+
+@pytest.fixture
+def branch_id(db):
+    """Id của "Chi nhánh chính" (chi nhánh của tài khoản owner, staff trong test)."""
+    return db.query(Branch).filter_by(name="Chi nhánh chính").one().id
 
 
 @pytest.fixture

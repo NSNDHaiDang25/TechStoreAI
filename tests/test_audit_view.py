@@ -45,13 +45,10 @@ def test_search_by_target_name_and_actor(client, owner_h, admin_h):
     assert client.get("/api/audit-logs", params={"q": "Chủ", "action": "PRICE_CHANGE"}, headers=admin_h).json()["total"] == 2
 
 
-def test_branch_tab_counts_follow_other_filters(client, owner_h, admin_h):
-    bid = client.post("/api/branches", json={"name": "Cơ sở A"}, headers=admin_h).json()["id"]
-    owner_id = next(u["id"] for u in client.get("/api/users", headers=admin_h).json() if u["username"] == "owner")
-    client.put(f"/api/users/{owner_id}", json={"branch_id": bid}, headers=admin_h)
+def test_branch_tab_counts_follow_other_filters(client, owner_h, admin_h, branch_id):
     change_price(client, owner_h, "PK001", 390_000)
     body = client.get("/api/audit-logs", params={"action": "PRICE_CHANGE", "branch_id": 0}, headers=admin_h).json()
-    assert body["total"] == 0 and body["branch_counts"] == {str(bid): 1}  # tab vẫn đếm mọi chi nhánh
+    assert body["total"] == 0 and body["branch_counts"] == {str(branch_id): 1}  # tab vẫn đếm mọi chi nhánh
 
 
 def test_export_excel_uses_current_filters(client, owner_h, admin_h, staff_h):

@@ -11,6 +11,7 @@ from app.routers.invoices import mask_phone
 from app.schemas import CustomerIn, CustomerOut, PointsAdjustIn
 from app.security import ALL_STAFF, MANAGERS
 from app.services import audit, loyalty
+from app.services.branch_scope import ALL_BRANCHES
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 
@@ -125,7 +126,8 @@ def adjust_points(customer_id: int, data: PointsAdjustIn, db: Session = Depends(
 
 
 def _next_customer_code(db: Session) -> str:
-    nums = [int(x[2:]) for x in db.scalars(select(Customer.code).where(Customer.code.like("KH%"))) if x[2:].isdigit()]
+    nums = [int(x[2:]) for x in db.scalars(select(Customer.code).where(Customer.code.like("KH%")).execution_options(**ALL_BRANCHES))
+            if x[2:].isdigit()]  # mã khách không trùng giữa các chi nhánh
     return f"KH{max(nums, default=0) + 1:04d}"
 
 

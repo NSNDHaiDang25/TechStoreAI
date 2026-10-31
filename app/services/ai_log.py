@@ -10,7 +10,7 @@ from app.ai.client import get_ai_client
 from app.ai.sanitizer import scrub
 from app.database import get_db
 from app.errors import APIError
-from app.models import AILog, User, now
+from app.models import AILog, Branch, User, now
 from app.security import get_current_user
 from app.services import app_settings
 
@@ -75,26 +75,42 @@ def ai_guard(db: Session = Depends(get_db), user: User = Depends(get_current_use
 
 
 def list_logs(db: Session, user: User, feature: str | None, status: str | None, user_id: int | None,
-              page: int, size: int) -> dict:
-    stmt = select(AILog)
+              page: int, size: int, branch_id: int | None = None) -> dict:
+    """Chủ cửa hàng chỉ thấy lượt gọi của chi nhánh mình (lọc tự động theo chi nhánh); quản trị viên xem mọi chi nhánh,
+    lọc được theo chi nhánh (branch_id = 0: lượt gọi không thuộc chi nhánh nào), kèm số lượt từng chi nhánh cho các tab."""
+    scope = []
     if user.role == "staff":
-        stmt = stmt.where(AILog.user_id == user.id)  # bảng 4.2: nhân viên chỉ xem lượt của mình
+        scope.append(AILog.user_id == user.id)  # bảng 4.2: nhân viên chỉ xem lượt của mình
     elif user_id:
-        stmt = stmt.where(AILog.user_id == user_id)
+        scope.append(AILog.user_id == user_id)
     if feature:
-        stmt = stmt.where(AILog.feature == feature)
-    if status:
-        stmt = stmt.where(AILog.status == status)
+        scope.append(AILog.feature == feature)
+    by_branch = []
+    if user.role == "admin" and branch_id is not None:
+        by_branch.append(AILog.branch_id.is_(None) if branch_id == 0 else AILog.branch_id == branch_id)
+    listing = scope + by_branch + ([AILog.status == status] if status else [])
+    stmt = select(AILog).where(*listing)
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = db.scalars(stmt.order_by(AILog.id.desc()).offset((page - 1) * size).limit(size)).all()
-    summary = dict(db.execute(select(AILog.status, func.count(AILog.id)).group_by(AILog.status)).all()) \
-        if user.role != "staff" else {}
-    avg = db.scalar(select(func.avg(AILog.latency_ms)).where(AILog.status == "success")) if user.role != "staff" else None
-    return {"total": total, "summary": summary, "avg_latency_ms": int(avg) if avg else None, "items": [{
-        "id": r.id, "user_name": r.user.full_name if r.user else None, "feature": r.feature,
-        "prompt_version": r.prompt_version, "model_name": r.model_name, "question": r.question,
-        "generated_sql": r.generated_sql, "response": r.response, "status": r.status, "latency_ms": r.latency_ms,
-        "retry_count": r.retry_count, "created_at": r.created_at} for r in rows]}
+    summary, avg = {}, None
+    if user.role != "staff":  # thẻ thống kê theo chi nhánh đang xem
+        summary = dict(db.execute(select(AILog.status, func.count(AILog.id)).where(*scope, *by_branch)
+                                  .group_by(AILog.status)).all())
+        avg = db.scalar(select(func.avg(AILog.latency_ms)).where(*scope, *by_branch, AILog.status == "success"))
+    names = dict(db.execute(select(Branch.id, Branch.name)).all())
+    out = {"total": total, "summary": summary, "avg_latency_ms": int(avg) if avg else None,
+           "branches": [], "branch_counts": {}, "items": [{
+               "id": r.id, "user_name": (r.user.full_name or r.user.username) if r.user else None, "feature": r.feature,
+               "branch_id": r.branch_id, "branch_name": names.get(r.branch_id),
+               "prompt_version": r.prompt_version, "model_name": r.model_name, "question": r.question,
+               "generated_sql": r.generated_sql, "response": r.response, "status": r.status, "latency_ms": r.latency_ms,
+               "retry_count": r.retry_count, "created_at": r.created_at} for r in rows]}
+    if user.role == "admin":
+        out["branches"] = [{"id": i, "name": n} for i, n in sorted(names.items())]
+        counts = db.execute(select(AILog.branch_id, func.count(AILog.id))
+                            .where(*scope, *([AILog.status == status] if status else [])).group_by(AILog.branch_id)).all()
+        out["branch_counts"] = {str(b or 0): n for b, n in counts}
+    return out
 
 
 def configured_client(db: Session = Depends(get_db), client=Depends(get_ai_client)):

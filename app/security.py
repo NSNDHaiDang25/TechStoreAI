@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import RevokedToken, User, now
+from app.services import branch_scope
 
 ALGORITHM = "HS256"
 BCRYPT_ROUNDS = 12  # mỗi lần băm ~0,2 giây: đủ chậm để chống dò mật khẩu, đăng nhập vẫn nhanh
@@ -84,6 +85,9 @@ def revoke_token(db: Session, payload: dict) -> None:
     db.query(RevokedToken).filter(RevokedToken.expires_at < now()).delete()
 
 
+NO_BRANCH = "Tài khoản chưa được gán chi nhánh. Liên hệ quản trị viên"
+
+
 def get_current_user(
     request: Request,
     creds: HTTPAuthorizationCredentials | None = Depends(bearer),
@@ -102,6 +106,10 @@ def get_current_user(
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise unauthorized
+    if user.role != "admin":  # mỗi chi nhánh độc lập: chỉ đọc / ghi dữ liệu chi nhánh của mình
+        if user.branch_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, NO_BRANCH)
+        branch_scope.set_scope(db, user.branch_id)
     request.state.token_payload = payload
     return user
 

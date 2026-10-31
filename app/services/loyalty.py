@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Customer, CustomerTier, LoyaltyTransaction, User
 from app.services import app_settings
+from app.services.branch_scope import ALL_BRANCHES
 
 BASE_TIER = "Thành viên"
 DEFAULT_TIERS = [(BASE_TIER, None, 1.0), ("Bạc", "tier_silver_min", 1.2), ("Vàng", "tier_gold_min", 1.5)]
@@ -44,7 +45,8 @@ def assign_missing_tiers(db: Session) -> None:
 
 
 def recompute_all(db: Session) -> None:
-    for c in db.scalars(select(Customer)):
+    """Ngưỡng hạng dùng chung cho mọi chi nhánh: tính lại hạng cho khách của tất cả chi nhánh."""
+    for c in db.scalars(select(Customer).execution_options(**ALL_BRANCHES)):
         recompute_tier(db, c)
 
 

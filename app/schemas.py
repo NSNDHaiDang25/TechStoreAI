@@ -160,14 +160,24 @@ class ResetPasswordIn(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    full_name: str | None = None
+    full_name: str | None = Field(default=None, max_length=100)
     password: StrongPassword | None = None
     role: Role | None = None
     is_active: bool | None = None
     email: Annotated[str | None, AfterValidator(normalize_email)] = None
     phone: Annotated[str | None, AfterValidator(normalize_phone)] = None
     unlock: bool = False  # mở khóa tạm do đăng nhập sai nhiều lần
-    branch_id: int | None = None  # gửi null để bỏ khỏi chi nhánh
+    branch_id: int | None = None  # chi nhánh mới (chủ cửa hàng / nhân viên bắt buộc có chi nhánh)
+
+    @field_validator("full_name")
+    @classmethod
+    def full_name_not_blank(cls, v: str | None):
+        if v is None:
+            return v
+        v = " ".join(v.split())
+        if not v:
+            raise ValueError("Họ tên không được để trống")
+        return v
 
 
 # ---------- Category ----------

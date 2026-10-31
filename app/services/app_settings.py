@@ -2,6 +2,11 @@
 
 Đọc lại từ CSDL mỗi lần dùng nên sửa xong có hiệu lực ngay, không cần khởi động lại.
 Chưa có dòng trong bảng thì dùng giá trị mặc định dưới đây (một số lấy từ .env để giữ cấu hình cũ).
+
+Mỗi chi nhánh độc lập: tham số kinh doanh trong BRANCH_KEYS (thông tin in hóa đơn, tài khoản nhận tiền, quy tắc
+điểm, cảnh báo tồn...) lưu riêng cho từng chi nhánh trong bảng branch_settings. Chủ cửa hàng sửa thì chỉ đổi chi
+nhánh của mình; chi nhánh chưa đặt riêng thì dùng giá trị chung. Ngưỡng hạng khách và thời gian giữ hóa đơn chờ
+chuyển khoản dùng chung cho mọi chi nhánh.
 """
 from dataclasses import dataclass
 from typing import Any
@@ -10,7 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings as env
-from app.models import Setting, User, now
+from app.models import BranchSetting, Setting, User, now
+from app.services.branch_scope import current_branch
 
 
 @dataclass(frozen=True)
@@ -61,6 +67,20 @@ SPECS: dict[str, Spec] = {
 }
 
 
+# Tham số chung cho mọi chi nhánh dù do chủ cửa hàng sửa
+SHARED_OWNER_KEYS = {"tier_silver_min", "tier_gold_min", "pending_payment_minutes"}
+BRANCH_KEYS = frozenset(k for k, s in SPECS.items() if s.editor == "owner" and k not in SHARED_OWNER_KEYS)
+
+
+def _branch_rows(db: Session, keys) -> dict[str, BranchSetting]:
+    branch = current_branch(db)
+    keys = [k for k in keys if k in BRANCH_KEYS]
+    if branch is None or not keys:
+        return {}
+    return {r.key: r for r in db.scalars(select(BranchSetting).where(BranchSetting.branch_id == branch,
+                                                                     BranchSetting.key.in_(keys)))}
+
+
 def _parse(spec: Spec, raw: str) -> Any:
     if spec.kind is bool:
         return str(raw).strip().lower() in ("1", "true", "yes", "on")
@@ -75,7 +95,7 @@ def _to_str(spec: Spec, value: Any) -> str:
 
 def get(db: Session, key: str) -> Any:
     spec = SPECS[key]
-    row = db.get(Setting, key)
+    row = _branch_rows(db, [key]).get(key) or db.get(Setting, key)
     if row is None:
         return spec.default
     try:
@@ -87,6 +107,7 @@ def get(db: Session, key: str) -> Any:
 def get_many(db: Session, keys: list[str] | None = None) -> dict[str, Any]:
     keys = keys or list(SPECS)
     rows = {r.key: r for r in db.scalars(select(Setting).where(Setting.key.in_(keys)))}
+    rows.update(_branch_rows(db, keys))  # giá trị riêng của chi nhánh được ưu tiên
     out = {}
     for k in keys:
         spec = SPECS[k]
@@ -143,10 +164,17 @@ def update(db: Session, user: User, changes: dict[str, Any]) -> dict[str, tuple[
         old = get(db, key)
         if old == new:
             continue
-        row = db.get(Setting, key)
-        if row is None:
-            row = Setting(key=key, description=SPECS[key].description)
-            db.add(row)
+        branch = current_branch(db)
+        if key in BRANCH_KEYS and branch is not None:  # chủ cửa hàng: chỉ đổi chi nhánh của mình
+            row = db.get(BranchSetting, (branch, key))
+            if row is None:
+                row = BranchSetting(branch_id=branch, key=key)
+                db.add(row)
+        else:
+            row = db.get(Setting, key)
+            if row is None:
+                row = Setting(key=key, description=SPECS[key].description)
+                db.add(row)
         row.value = _to_str(SPECS[key], new)
         row.updated_by = user.id
         row.updated_at = now()

@@ -27,6 +27,7 @@ import Returns from './pages/Returns.jsx'
 import Settings from './pages/Settings.jsx'
 import Suppliers from './pages/Suppliers.jsx'
 import Users from './pages/Users.jsx'
+import Branches from './pages/Branches.jsx'
 import Warranty from './pages/Warranty.jsx'
 
 const PAGES = {
@@ -49,6 +50,7 @@ const PAGES = {
   '/ai/logs': AILogs,
   '/ai/conversations': AIConversations,
   '/users': Users,
+  '/branches': Branches,
   '/settings': Settings,
   '/audit': Audit,
   '/system': Backup,

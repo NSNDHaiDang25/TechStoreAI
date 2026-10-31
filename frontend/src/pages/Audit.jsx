@@ -1,5 +1,6 @@
 // Nhật ký thao tác (UC-06, bảng audit_logs) và nhật ký gửi email
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api, openFile } from '../api.js'
 import { useAuth } from '../auth.jsx'
 import { daysAgo, fmtDateTime, today } from '../format.js'
@@ -45,7 +46,8 @@ function Changes({ list }) {
 function AuditLogs() {
   const { user } = useAuth()
   const toast = useToast()
-  const [f, setF] = useState({ user_id: '', entity: '', action: '', date_from: daysAgo(29), date_to: today(), branch_id: '' })
+  const [query] = useSearchParams()
+  const [f, setF] = useState({ user_id: '', entity: '', action: '', date_from: daysAgo(29), date_to: today(), branch_id: query.get('branch') || '' })
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)

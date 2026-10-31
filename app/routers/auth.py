@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -17,8 +17,8 @@ from app.database import get_db
 from app.models import AuditLog, Branch, EmailLog, FaceProfile, PasswordReset, User, now
 from app.schemas import (AdminResetPasswordIn, BranchIn, ChangePasswordIn, ForgotPasswordIn, LoginIn, RegisterIn,
                          ResetPasswordIn, TokenOut, UserCreate, UserOut, UserUpdate)
-from app.security import (ADMIN_ONLY, ADMIN_OR_OWNER, create_token, get_current_user, hash_password, needs_rehash,
-                          revoke_token, verify_password)
+from app.security import (ADMIN_ONLY, ADMIN_OR_OWNER, NO_BRANCH, create_token, get_current_user, hash_password,
+                          needs_rehash, revoke_token, verify_password)
 from app.services import app_settings, audit, face
 from app.services.audit import client_ip
 from app.services.mailer import MailError, mail_configured, send_mail
@@ -81,6 +81,11 @@ def _check_can_login(user: User) -> None:
         raise HTTPException(403, "Tài khoản đang chờ quản trị viên duyệt. Vui lòng thử lại sau khi được duyệt!")
     if not user.is_active:
         raise HTTPException(403, "Tài khoản đã bị khóa")
+    if user.role != "admin":  # mỗi chủ cửa hàng / nhân viên làm việc trong một chi nhánh
+        if user.branch_id is None:
+            raise HTTPException(403, NO_BRANCH)
+        if not user.branch.is_active:
+            raise HTTPException(403, f"Chi nhánh {user.branch.name} đã ngừng hoạt động. Liên hệ quản trị viên")
 
 
 def _issue_token(db: Session, user: User) -> TokenOut:
@@ -438,7 +443,7 @@ def me(user: User = Depends(get_current_user)):
 
 @router.get("/users", response_model=list[UserOut])
 def list_users(db: Session = Depends(get_db), _: User = Depends(ADMIN_ONLY)):
-    return db.scalars(select(User).order_by(User.id)).all()
+    return db.scalars(select(User).where(User.deleted_at.is_(None)).order_by(User.id)).all()
 
 
 def _user_snapshot(u: User) -> dict:
@@ -447,9 +452,12 @@ def _user_snapshot(u: User) -> dict:
 
 
 def _branch_for(db: Session, role: str, branch_id: int | None) -> int | None:
-    """Chi nhánh hợp lệ cho tài khoản: quản trị viên không thuộc chi nhánh nào."""
-    if role == "admin" or branch_id is None:
+    """Chi nhánh hợp lệ cho tài khoản: quản trị viên không thuộc chi nhánh nào; chủ cửa hàng / nhân viên bắt buộc
+    thuộc một chi nhánh đang hoạt động (dữ liệu mỗi chi nhánh độc lập)."""
+    if role == "admin":
         return None
+    if branch_id is None:
+        raise HTTPException(400, "Chủ cửa hàng và nhân viên phải thuộc một chi nhánh. Hãy chọn chi nhánh")
     branch = db.get(Branch, branch_id)
     if branch is None or not branch.is_active:
         raise HTTPException(400, "Chi nhánh không tồn tại hoặc đã ngừng hoạt động")
@@ -522,10 +530,13 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
         user.failed_login_count = 0
     if data.password:
         user.password_hash = hash_password(data.password)
-    if "branch_id" in data.model_fields_set or user.role == "admin":
+    # Duyệt tài khoản tự đăng ký / đổi vai trò sang chủ cửa hàng, nhân viên: phải có chi nhánh
+    needs_branch = user.role != "admin" and not user.pending
+    if "branch_id" in data.model_fields_set or user.role == "admin" or (needs_branch and user.branch_id is None):
         branch_id = data.branch_id if "branch_id" in data.model_fields_set else user.branch_id
-        if branch_id != user.branch_id or user.role == "admin":
-            _set_branch(db, user, _branch_for(db, user.role, branch_id))
+        new = None if not needs_branch and branch_id is None else _branch_for(db, user.role, branch_id)
+        if new != user.branch_id:
+            _set_branch(db, user, new)
     after = _user_snapshot(user)
     if before != after:
         action = "ROLE_CHANGE" if before["role"] != after["role"] else "USER_UPDATE"
@@ -536,13 +547,31 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
 
 # ---------------------------------------------------------------- Chi nhánh
 def _branch_out(db: Session, b: Branch) -> dict:
-    users = db.scalar(select(func.count(User.id)).where(User.branch_id == b.id, User.pending.is_(False))) or 0
-    return {"id": b.id, "name": b.name, "address": b.address, "is_active": b.is_active, "user_count": users}
+    """Thông tin chi nhánh kèm số chủ cửa hàng, nhân viên và số thao tác 30 ngày qua."""
+    roles = dict(db.execute(select(User.role, func.count(User.id))
+                            .where(User.branch_id == b.id, User.pending.is_(False), User.deleted_at.is_(None))
+                            .group_by(User.role)).all())
+    actions = db.scalar(select(func.count(AuditLog.id)).where(
+        AuditLog.branch_id == b.id, AuditLog.created_at >= now() - timedelta(days=30))) or 0
+    return {"id": b.id, "name": b.name, "address": b.address, "is_active": b.is_active,
+            "owner_count": roles.get("owner", 0), "staff_count": roles.get("staff", 0),
+            "user_count": sum(roles.values()), "actions_30d": actions}
 
 
 @router.get("/branches")
 def list_branches(db: Session = Depends(get_db), _: User = Depends(ADMIN_ONLY)):
     return [_branch_out(db, b) for b in db.scalars(select(Branch).order_by(Branch.id))]
+
+
+@router.get("/branches/{branch_id}")
+def get_branch(branch_id: int, db: Session = Depends(get_db), _: User = Depends(ADMIN_ONLY)):
+    """Chi tiết một chi nhánh: các tài khoản thuộc chi nhánh (chủ cửa hàng trước, rồi nhân viên)."""
+    b = db.get(Branch, branch_id)
+    if b is None:
+        raise HTTPException(404, "Không tìm thấy chi nhánh")
+    users = db.scalars(select(User).where(User.branch_id == b.id, User.pending.is_(False), User.deleted_at.is_(None))
+                       .order_by(User.role != "owner", User.full_name)).all()
+    return {**_branch_out(db, b), "users": [UserOut.model_validate(u).model_dump(mode="json") for u in users]}
 
 
 def _check_branch_name(db: Session, name: str, branch_id: int | None = None) -> None:
@@ -592,13 +621,64 @@ def admin_reset_password(user_id: int, data: AdminResetPasswordIn, db: Session =
 
 
 @router.delete("/users/{user_id}")
-def reject_user(user_id: int, db: Session = Depends(get_db), _: User = Depends(ADMIN_ONLY)):
-    """Từ chối yêu cầu tạo tài khoản. Tài khoản đã được duyệt thì chỉ khóa, không xóa, để giữ lịch sử hóa đơn."""
+def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(ADMIN_ONLY)):
+    """Xóa tài khoản (hoặc từ chối yêu cầu tạo tài khoản đang chờ duyệt).
+
+    - Chưa có lịch sử nào: xóa hẳn khỏi CSDL (kèm ảnh Face ID, lịch sử trò chuyện AI, mã đặt lại mật khẩu).
+    - Đã có lịch sử (hóa đơn, phiếu nhập, đổi trả, nhật ký...): không xóa hẳn để hóa đơn, báo cáo cũ còn đúng người lập.
+      Tài khoản được gỡ: ẩn khỏi danh sách, không đăng nhập được, tên đăng nhập và email được giải phóng để dùng lại;
+      lịch sử vẫn hiện họ tên người này.
+    """
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.deleted_at is not None:
         raise HTTPException(404, "Không tìm thấy người dùng")
-    if not user.pending:
-        raise HTTPException(400, "Chỉ xóa được tài khoản đang chờ duyệt. Tài khoản đã dùng hãy khóa lại")
+    if user.id == admin.id:
+        raise HTTPException(400, "Không thể tự xóa tài khoản của chính mình")
+    if user.role == "admin" and user.is_active and _active_admins(db) <= 1:
+        raise HTTPException(400, "Không thể xóa quản trị viên cuối cùng")
+    if user.pending:
+        db.delete(user)
+        db.commit()
+        return {"ok": True, "deleted": True, "message": f"Đã từ chối tài khoản {user.username}"}
+
+    snapshot = {"username": user.username, **_user_snapshot(user)}
+    if _has_history(db, user.id):
+        user.deleted_at = now()
+        user.is_active = False
+        user.username = f"{user.username[:36]}~xoa{user.id}"[:50]  # giải phóng tên đăng nhập để dùng lại
+        user.email = None
+        for profile in db.scalars(select(FaceProfile).where(FaceProfile.user_id == user.id)):
+            db.delete(profile)  # không còn đăng nhập Face ID được
+        audit.log(db, admin, "USER_DELETE", "users", user.id, old=snapshot, new={"kept_history": True})
+        db.commit()
+        return {"ok": True, "deleted": False,
+                "message": f"Đã xóa tài khoản {snapshot['username']}. Hóa đơn, phiếu nhập cũ vẫn giữ tên người lập"}
+
+    audit.log(db, admin, "USER_DELETE", "users", user.id, old=snapshot)
+    db.flush()
+    _delete_personal_data(db, user.id)
     db.delete(user)
     db.commit()
-    return {"ok": True, "message": f"Đã từ chối tài khoản {user.username}"}
+    return {"ok": True, "deleted": True, "message": f"Đã xóa tài khoản {snapshot['username']}"}
+
+
+# Bảng lưu lịch sử nghiệp vụ / nhật ký của người dùng: còn dòng nào thì không xóa hẳn tài khoản
+_HISTORY_REFS = [("invoices", "user_id"), ("invoices", "cancelled_by"), ("invoices", "cancel_requested_by"),
+                 ("import_receipts", "user_id"), ("stock_movements", "user_id"), ("promotions", "created_by"),
+                 ("loyalty_transactions", "created_by"), ("payments", "confirmed_by"), ("returns", "processed_by"),
+                 ("warranty_tickets", "received_by"), ("audit_logs", "user_id"), ("ai_logs", "user_id")]
+
+
+def _has_history(db: Session, user_id: int) -> bool:
+    return any(db.execute(text(f"SELECT 1 FROM {table} WHERE {col} = :u LIMIT 1"), {"u": user_id}).first()
+               for table, col in _HISTORY_REFS)
+
+
+def _delete_personal_data(db: Session, user_id: int) -> None:
+    """Dữ liệu cá nhân đi kèm tài khoản, xóa cùng khi xóa hẳn tài khoản."""
+    db.execute(text("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id = :u)"),
+               {"u": user_id})
+    for table in ("chat_sessions", "face_profiles", "password_resets", "revoked_tokens"):
+        db.execute(text(f"DELETE FROM {table} WHERE user_id = :u"), {"u": user_id})
+    for table in ("settings", "branch_settings"):
+        db.execute(text(f"UPDATE {table} SET updated_by = NULL WHERE updated_by = :u"), {"u": user_id})

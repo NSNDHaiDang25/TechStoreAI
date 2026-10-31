@@ -32,6 +32,12 @@ def now() -> datetime:
 
 
 # ======================================================================= Hệ thống và bảo mật
+class BranchOwned:
+    """Dữ liệu nghiệp vụ thuộc riêng một chi nhánh. Chủ cửa hàng / nhân viên chỉ đọc được dữ liệu chi nhánh mình,
+    bản ghi mới tự gắn chi nhánh của người tạo (xem app/services/branch_scope.py)."""
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), index=True)
+
+
 class Branch(Base):
     """Chi nhánh (cơ sở) của cửa hàng. Chủ cửa hàng và nhân viên thuộc một chi nhánh; thao tác của họ
     được ghi nhật ký kèm chi nhánh để quản trị viên xem riêng từng cơ sở."""
@@ -59,6 +65,8 @@ class User(Base):
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0)       # FR-AUT-03
     locked_until: Mapped[datetime | None] = mapped_column(DateTime)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Tài khoản đã xóa nhưng còn lịch sử (hóa đơn, phiếu nhập...): ẩn khỏi danh sách, không đăng nhập được
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, onupdate=now)
     branch: Mapped[Branch | None] = relationship()
@@ -107,6 +115,17 @@ class Setting(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class BranchSetting(Base):
+    """Tham số kinh doanh riêng của một chi nhánh (thông tin in hóa đơn, tài khoản nhận tiền, quy tắc điểm...).
+    Chưa đặt riêng thì dùng giá trị chung trong bảng settings / mặc định."""
+    __tablename__ = "branch_settings"
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), primary_key=True)
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(String(255))
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class AuditLog(Base):
     """Nhật ký thao tác nhạy cảm (FR-SYS-03)."""
     __tablename__ = "audit_logs"
@@ -124,7 +143,7 @@ class AuditLog(Base):
     branch: Mapped[Branch | None] = relationship()
 
 
-class EmailLog(Base):
+class EmailLog(BranchOwned, Base):
     __tablename__ = "email_logs"
     id: Mapped[int] = mapped_column(primary_key=True)
     to_email: Mapped[str] = mapped_column(String(100))
@@ -135,7 +154,7 @@ class EmailLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
-class AILog(Base):
+class AILog(BranchOwned, Base):
     """Nhật ký mỗi lượt gọi AI (BR-44). Câu hỏi đã che số điện thoại, email."""
     __tablename__ = "ai_logs"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -167,7 +186,7 @@ class Category(Base):
     products: Mapped[list["Product"]] = relationship(back_populates="category")
 
 
-class Product(Base):
+class Product(BranchOwned, Base):
     __tablename__ = "products"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(30), unique=True, index=True)  # SKU
@@ -191,7 +210,7 @@ class Product(Base):
     category: Mapped[Category | None] = relationship(back_populates="products")
 
 
-class ProductSerial(Base):
+class ProductSerial(BranchOwned, Base):
     """Serial hoặc IMEI từng máy (FR-PRD-09)."""
     __tablename__ = "product_serials"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -205,7 +224,7 @@ class ProductSerial(Base):
 
 
 # ======================================================================= Nhập hàng và kho
-class Supplier(Base):
+class Supplier(BranchOwned, Base):
     __tablename__ = "suppliers"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
@@ -219,7 +238,7 @@ class Supplier(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
-class ImportReceipt(Base):
+class ImportReceipt(BranchOwned, Base):
     """Phiếu nhập hàng (purchase_orders trong SRS): draft -> confirmed -> cancelled."""
     __tablename__ = "import_receipts"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -241,7 +260,7 @@ class ImportReceipt(Base):
     )
 
 
-class ImportItem(Base):
+class ImportItem(BranchOwned, Base):
     __tablename__ = "import_items"
     id: Mapped[int] = mapped_column(primary_key=True)
     receipt_id: Mapped[int] = mapped_column(ForeignKey("import_receipts.id", ondelete="CASCADE"))
@@ -254,7 +273,7 @@ class ImportItem(Base):
     product: Mapped[Product] = relationship()
 
 
-class StockMovement(Base):
+class StockMovement(BranchOwned, Base):
     """Thẻ kho: mọi thay đổi tồn kho đều ghi lại tại đây (BR-17)."""
     __tablename__ = "stock_movements"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -279,7 +298,7 @@ class CustomerTier(Base):
     points_multiplier: Mapped[float] = mapped_column(Float, default=1.0)
 
 
-class Customer(Base):
+class Customer(BranchOwned, Base):
     __tablename__ = "customers"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(30), unique=True, index=True)
@@ -300,7 +319,7 @@ class Customer(Base):
     invoices: Mapped[list["Invoice"]] = relationship(back_populates="customer")
 
 
-class LoyaltyTransaction(Base):
+class LoyaltyTransaction(BranchOwned, Base):
     __tablename__ = "loyalty_transactions"
     id: Mapped[int] = mapped_column(primary_key=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
@@ -313,7 +332,7 @@ class LoyaltyTransaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
-class Promotion(Base):
+class Promotion(BranchOwned, Base):
     __tablename__ = "promotions"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str | None] = mapped_column(String(30), unique=True)
@@ -335,7 +354,7 @@ class Promotion(Base):
 
 
 # ======================================================================= Bán hàng
-class Invoice(Base):
+class Invoice(BranchOwned, Base):
     __tablename__ = "invoices"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(30), unique=True, index=True)
@@ -374,7 +393,7 @@ class Invoice(Base):
     payments: Mapped[list["Payment"]] = relationship(back_populates="invoice", order_by="Payment.id")
 
 
-class InvoiceItem(Base):
+class InvoiceItem(BranchOwned, Base):
     __tablename__ = "invoice_items"
     id: Mapped[int] = mapped_column(primary_key=True)
     invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"))
@@ -400,7 +419,7 @@ class InvoiceItem(Base):
         return self.line_total - self.discount_amount
 
 
-class Payment(Base):
+class Payment(BranchOwned, Base):
     __tablename__ = "payments"
     id: Mapped[int] = mapped_column(primary_key=True)
     invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
@@ -416,7 +435,7 @@ class Payment(Base):
 
 
 # ======================================================================= Đổi trả và bảo hành
-class Return(Base):
+class Return(BranchOwned, Base):
     __tablename__ = "returns"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(25), unique=True, index=True)
@@ -435,7 +454,7 @@ class Return(Base):
     items: Mapped[list["ReturnItem"]] = relationship(back_populates="ret", cascade="all, delete-orphan")
 
 
-class ReturnItem(Base):
+class ReturnItem(BranchOwned, Base):
     __tablename__ = "return_items"
     id: Mapped[int] = mapped_column(primary_key=True)
     return_id: Mapped[int] = mapped_column(ForeignKey("returns.id", ondelete="CASCADE"))
@@ -449,7 +468,7 @@ class ReturnItem(Base):
     invoice_item: Mapped[InvoiceItem] = relationship()
 
 
-class Warranty(Base):
+class Warranty(BranchOwned, Base):
     """Hồ sơ bảo hành, tạo khi hóa đơn thanh toán (FR-WAR-01)."""
     __tablename__ = "warranties"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -466,7 +485,7 @@ class Warranty(Base):
     customer: Mapped[Customer | None] = relationship()
 
 
-class WarrantyTicket(Base):
+class WarrantyTicket(BranchOwned, Base):
     __tablename__ = "warranty_tickets"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(25), unique=True, index=True)

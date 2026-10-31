@@ -101,6 +101,29 @@ def test_excel_template_can_be_imported_as_is(client, owner_h):
     assert body["errors"] == [] and body["preview"][0]["sku"] == "TN-SONY-02" and body["preview"][0]["sale_price"] == 8_490_000
 
 
+def test_import_image_links(client, owner_h):
+    from openpyxl import Workbook
+    from io import BytesIO
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["sku", "ten", "gia_ban", "link_anh"])
+    ws.append(["IMG-1", "Có link", 100000, "https://cdn.example.com/a.jpg"])
+    ws.append(["IMG-2", "Drive", 100000, "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing"])
+    ws.append(["IMG-3", "Siêu liên kết", 100000, "Xem ảnh"])
+    ws["D4"].hyperlink = "https://cdn.example.com/c.png"  # chữ hiển thị khác địa chỉ: lấy địa chỉ
+    ws.append(["IMG-4", "Không ảnh", 100000, None])
+    buf = BytesIO()
+    wb.save(buf)
+    files = {"file": ("anh.xlsx", buf.getvalue(), "application/octet-stream")}
+    assert client.post("/api/products/import", headers=owner_h, files=files).json()["created"] == 4
+    urls = {p["code"]: p["image_url"] for p in client.get("/api/products", params={"q": "IMG-"}, headers=owner_h).json()["items"]}
+    assert urls == {"IMG-1": "https://cdn.example.com/a.jpg",
+                    "IMG-2": "https://drive.google.com/thumbnail?id=1AbCdEfGhIjKlMnOp&sz=w800",
+                    "IMG-3": "https://cdn.example.com/c.png", "IMG-4": None}
+    bad = upload(client, owner_h, "sku,ten,gia_ban,link_anh\nIMG-9,Sai,100000,anh.jpg\n", dry_run=True).json()
+    assert bad["errors"][0]["line"] == 2 and "http" in bad["errors"][0]["error"]
+
+
 def test_import_rejects_broken_excel_and_xls(client, owner_h):
     r = client.post("/api/products/import", headers=owner_h, files={"file": ("x.xlsx", b"PK\x03\x04hong", "application/zip")})
     assert r.status_code == 400 and ".xlsx" in r.json()["detail"]

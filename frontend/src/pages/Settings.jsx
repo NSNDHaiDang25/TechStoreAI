@@ -133,6 +133,7 @@ export default function Settings() {
         <div className="card" style={{ position: 'sticky', top: 76, zIndex: 5 }}>
           <div className="toolbar mb-0">
             <p className="muted small m-0 grow">{user.role === 'admin' ? t('Quản trị viên sửa tham số kỹ thuật, bảo mật và AI; tham số kinh doanh do chủ cửa hàng sửa (ở đây chỉ xem).') : t('Chủ cửa hàng sửa tham số kinh doanh; tham số kỹ thuật và AI do quản trị viên quản lý.')}
+              {user.branch_name && <>{' '}{t('Thông tin cửa hàng, tài khoản nhận tiền và quy tắc điểm chỉ áp dụng cho chi nhánh')} <span className="strong">{user.branch_name}</span>; {t('ngưỡng hạng khách và thời gian giữ hóa đơn chờ chuyển khoản dùng chung mọi chi nhánh.')}</>}
               {' '}{t('Tham số mới có hiệu lực ngay, không cần khởi động lại.')}</p>
             <div className="actions">
               {changed.length > 0 && <button className="btn" onClick={() => setDraft({})}>{t('Hoàn tác')}</button>}

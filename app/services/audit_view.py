@@ -24,7 +24,7 @@ ACTION_LABELS = {
     "PURCHASE_CANCEL": "Hủy phiếu nhập", "RETURN_CREATE": "Đổi trả", "POINTS_ADJUST": "Điều chỉnh điểm",
     "TIER_UPDATE": "Sửa hạng khách", "PROMOTION_UPDATE": "Sửa khuyến mãi", "CUSTOMER_DEACTIVATE": "Ngừng theo dõi khách",
     "CUSTOMER_ACTIVATE": "Theo dõi lại khách", "PRODUCT_IMPORT": "Nhập sản phẩm từ tệp",
-    "BRANCH_CREATE": "Thêm chi nhánh", "BRANCH_UPDATE": "Sửa chi nhánh",
+    "BRANCH_CREATE": "Thêm chi nhánh", "BRANCH_UPDATE": "Sửa chi nhánh", "USER_DELETE": "Xóa tài khoản",
 }
 ENTITY_LABELS = {
     "users": "Tài khoản", "products": "Sản phẩm", "product_serials": "Serial", "customers": "Khách hàng",
@@ -39,7 +39,7 @@ FIELD_LABELS = {
     "liveness": "Kiểm tra người thật", "samples": "Số ảnh mẫu", "file": "Tệp", "created": "Đã tạo", "skipped": "Bỏ qua",
     "code": "Mã", "total": "Tổng tiền", "invoice": "Hóa đơn", "refund": "Hoàn tiền", "type": "Loại",
     "print_count": "Số lần in", "bytes": "Dung lượng", "stock": "Tồn kho", "quantity": "Số lượng",
-    "serial_no": "Số serial", "value": "Giá trị",
+    "serial_no": "Số serial", "value": "Giá trị", "kept_history": "Giữ lịch sử",
 }
 ROLE_LABELS = {"admin": "Quản trị viên", "owner": "Chủ cửa hàng", "staff": "Nhân viên bán hàng"}
 TARGETS = {  # entity -> (model, tên hiển thị)
@@ -179,7 +179,7 @@ def targets(db: Session, rows: list[AuditLog]) -> dict[int, str]:
 
 def item(r: AuditLog, target: str | None) -> dict:
     return {"id": r.id, "created_at": r.created_at, "user_id": r.user_id,
-            "user_name": r.user.full_name if r.user else None,
+            "user_name": (r.user.full_name or r.user.username) if r.user else None,
             "action": r.action, "action_label": ACTION_LABELS.get(r.action, r.action),
             "entity": r.entity, "entity_label": ENTITY_LABELS.get(r.entity, r.entity), "entity_id": r.entity_id,
             "target": target, "changes": changes(r.old_value, r.new_value),

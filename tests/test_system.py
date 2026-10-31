@@ -48,9 +48,10 @@ def test_logout_revokes_token(client):
     assert client.get("/api/auth/me", headers=other).status_code == 200
 
 
-def test_new_user_can_work_without_changing_password(client, admin_h):
+def test_new_user_can_work_without_changing_password(client, admin_h, branch_id):
     r = client.post("/api/users", json={"username": "nv3", "full_name": "Nhân viên 3", "password": "TamThoi123",
-                                        "role": "staff", "email": "nv3@example.com"}, headers=admin_h)
+                                        "role": "staff", "email": "nv3@example.com", "branch_id": branch_id},
+                    headers=admin_h)
     assert r.status_code == 201
     h = _login(client, "nv3", "TamThoi123")
     assert client.get("/api/products", headers=h).status_code == 200  # không bị bắt đổi mật khẩu

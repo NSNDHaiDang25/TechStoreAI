@@ -9,10 +9,12 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from app.services.branch_scope import ALL_BRANCHES
 
 
 def next_code(db: Session, model, prefix: str, at: datetime, width: int = 3) -> str:
     base = f"{prefix}-{at:%Y%m%d}-"
-    used = db.scalars(select(model.code).where(model.code.like(f"{base}%"))).all()
+    # Mã không trùng trên toàn hệ thống: đếm cả chứng từ của chi nhánh khác
+    used = db.scalars(select(model.code).where(model.code.like(f"{base}%")).execution_options(**ALL_BRANCHES)).all()
     nums = [int(m.group(1)) for c in used if (m := re.fullmatch(rf"{re.escape(base)}(\d+)", c))]
     return f"{base}{max(nums, default=0) + 1:0{width}d}"

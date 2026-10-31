@@ -53,31 +53,47 @@ ADDED_COLUMNS = {
         "pending": "BOOLEAN NOT NULL DEFAULT FALSE",
         "email": "VARCHAR(100)", "phone": "VARCHAR(15)",
         "failed_login_count": "INTEGER NOT NULL DEFAULT 0",
-        "locked_until": "DATETIME", "last_login_at": "DATETIME", "updated_at": "DATETIME",
+        "locked_until": "DATETIME", "last_login_at": "DATETIME", "updated_at": "DATETIME", "deleted_at": "DATETIME",
         "branch_id": "INTEGER REFERENCES branches(id)",
     },
     "audit_logs": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "email_logs": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "ai_logs": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "product_serials": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "suppliers": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "stock_movements": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "loyalty_transactions": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "promotions": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "payments": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "returns": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "return_items": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "warranties": {"branch_id": "INTEGER REFERENCES branches(id)"},
+    "warranty_tickets": {"branch_id": "INTEGER REFERENCES branches(id)"},
     "categories": {
         "default_vat_rate": "INTEGER NOT NULL DEFAULT 10",
         "default_warranty_months": "INTEGER NOT NULL DEFAULT 12",
         "is_active": "BOOLEAN NOT NULL DEFAULT TRUE", "name_en": "VARCHAR(100)",
     },
     "products": {
+        "branch_id": "INTEGER REFERENCES branches(id)",
         "image_url": "VARCHAR(255)", "name_en": "VARCHAR(200)", "barcode": "VARCHAR(20)", "brand": "VARCHAR(50)",
         "vat_rate": "INTEGER NOT NULL DEFAULT 10", "track_serial": "BOOLEAN NOT NULL DEFAULT FALSE",
         "warranty_months": "INTEGER NOT NULL DEFAULT 12",
     },
     "customers": {
+        "branch_id": "INTEGER REFERENCES branches(id)",
         "birthday": "DATE", "tier_id": "INTEGER", "loyalty_points": "INTEGER NOT NULL DEFAULT 0",
         "total_spent": "INTEGER NOT NULL DEFAULT 0", "is_active": "BOOLEAN NOT NULL DEFAULT TRUE",
         "updated_at": "DATETIME",
     },
     "import_receipts": {
+        "branch_id": "INTEGER REFERENCES branches(id)",
         "supplier_id": "INTEGER", "status": "VARCHAR(15) NOT NULL DEFAULT 'confirmed'",
         "received_at": "DATETIME", "cancelled_at": "DATETIME", "cancel_reason": "VARCHAR(255)",
     },
-    "import_items": {"serials": "JSON"},
+    "import_items": {"serials": "JSON", "branch_id": "INTEGER REFERENCES branches(id)"},
     "invoices": {
+        "branch_id": "INTEGER REFERENCES branches(id)",
         "cash_received": "INTEGER", "payment_ref": "VARCHAR(50)",
         "promo_discount": "INTEGER NOT NULL DEFAULT 0", "points_discount": "INTEGER NOT NULL DEFAULT 0",
         "vat_amount": "INTEGER NOT NULL DEFAULT 0", "promotion_id": "INTEGER",
@@ -86,6 +102,7 @@ ADDED_COLUMNS = {
         "cancel_requested_at": "DATETIME", "print_count": "INTEGER NOT NULL DEFAULT 0",
     },
     "invoice_items": {
+        "branch_id": "INTEGER REFERENCES branches(id)",
         "serial_id": "INTEGER", "discount_amount": "INTEGER NOT NULL DEFAULT 0",
         "vat_rate": "INTEGER NOT NULL DEFAULT 10", "vat_amount": "INTEGER NOT NULL DEFAULT 0",
         "returned_qty": "INTEGER NOT NULL DEFAULT 0", "warranty_months": "INTEGER NOT NULL DEFAULT 12",
@@ -140,6 +157,8 @@ def ensure_schema(bind) -> None:
         ensure_views(conn, recreate=True)  # view v_ai_* cho hỏi đáp dữ liệu (SRS 6.5, 7.5)
     from app.services.bootstrap import ensure_reference_data
     ensure_reference_data(bind)
+    from app.services.branch_scope import assign_default_branch
+    assign_default_branch(bind)  # dữ liệu / tài khoản chưa thuộc chi nhánh nào: về "Chi nhánh chính"
 
 
 def get_db():

@@ -25,11 +25,13 @@ TIMEOUT_SECONDS = 5.0   # FR-AIQ-05
 # Giờ Việt Nam cố định UTC+7 (không có giờ mùa hè), paid_at lưu theo giờ cửa hàng
 _TODAY = "date('now', '+7 hours')"
 
-# Thứ tự quan trọng: view sau được dựng từ view trước
+# View gốc vb_ai_* (có cột branch_id), thứ tự quan trọng: view sau được dựng từ view trước.
+# AI chỉ thấy v_ai_* = view gốc bỏ cột branch_id. Khi chạy SQL của chủ cửa hàng, run_sql() đặt CTE trùng tên v_ai_*
+# chỉ lấy dòng của chi nhánh đó, che view chung (mỗi chi nhánh độc lập).
 VIEWS: dict[str, str] = {
     "v_ai_products": """
         SELECT p.code AS sku, p.name, c.name AS category, p.brand, p.sale_price, p.cost_price,
-               p.stock AS stock_qty, p.min_stock AS min_stock_level, p.status
+               p.stock AS stock_qty, p.min_stock AS min_stock_level, p.status, p.branch_id
         FROM products p LEFT JOIN categories c ON c.id = p.category_id
         WHERE p.status = 'active'""",
     "v_ai_sales_lines": """
@@ -41,7 +43,7 @@ VIEWS: dict[str, str] = {
                CAST(ROUND((it.line_total - it.discount_amount) * 1.0 * (it.quantity - it.returned_qty) / it.quantity) AS INTEGER) AS net_revenue,
                CAST(ROUND(it.vat_amount * 1.0 * (it.quantity - it.returned_qty) / it.quantity) AS INTEGER) AS vat_amount,
                it.unit_cost * (it.quantity - it.returned_qty) AS cost_amount,
-               cu.code AS customer_code, t.name AS customer_tier, i.payment_method
+               cu.code AS customer_code, t.name AS customer_tier, i.payment_method, i.branch_id
         FROM invoice_items it
         JOIN invoices i ON i.id = it.invoice_id
         JOIN products p ON p.id = it.product_id
@@ -51,19 +53,19 @@ VIEWS: dict[str, str] = {
         WHERE i.status IN ('paid', 'partially_returned') AND it.quantity > it.returned_qty""",
     "v_ai_sales_daily": """
         SELECT sold_date, COUNT(DISTINCT invoice_code) AS invoice_count, SUM(net_revenue) AS revenue,
-               SUM(vat_amount) AS vat, SUM(net_revenue - vat_amount - cost_amount) AS gross_profit
-        FROM v_ai_sales_lines GROUP BY sold_date""",
+               SUM(vat_amount) AS vat, SUM(net_revenue - vat_amount - cost_amount) AS gross_profit, branch_id
+        FROM vb_ai_sales_lines GROUP BY branch_id, sold_date""",
     "v_ai_inventory": f"""
         SELECT p.code AS sku, p.name, c.name AS category, p.stock AS stock_qty, p.min_stock AS min_stock_level,
-               COALESCE((SELECT SUM(s.quantity) FROM v_ai_sales_lines s
+               COALESCE((SELECT SUM(s.quantity) FROM vb_ai_sales_lines s
                          WHERE s.sku = p.code AND s.sold_date >= date({_TODAY}, '-30 day')), 0) AS sold_30d,
-               p.stock * p.cost_price AS stock_value
+               p.stock * p.cost_price AS stock_value, p.branch_id
         FROM products p LEFT JOIN categories c ON c.id = p.category_id
         WHERE p.status = 'active'""",
     "v_ai_purchases": """
         SELECT r.code AS po_code, date(COALESCE(r.received_at, r.created_at)) AS received_date,
                COALESCE(s.name, r.supplier) AS supplier_name, p.code AS sku, p.name AS product_name,
-               ii.quantity, ii.unit_cost, ii.line_total
+               ii.quantity, ii.unit_cost, ii.line_total, r.branch_id
         FROM import_items ii
         JOIN import_receipts r ON r.id = ii.receipt_id
         JOIN products p ON p.id = ii.product_id
@@ -72,7 +74,7 @@ VIEWS: dict[str, str] = {
     "v_ai_returns": """
         SELECT date(r.created_at) AS return_date, r.code AS return_code, i.code AS invoice_code,
                p.code AS sku, p.name AS product_name, ri.quantity, ri.refund_amount, ri.item_condition,
-               r.return_type, r.reason
+               r.return_type, r.reason, r.branch_id
         FROM return_items ri
         JOIN returns r ON r.id = ri.return_id
         JOIN invoice_items it ON it.id = ri.invoice_item_id
@@ -83,11 +85,35 @@ VIEWS: dict[str, str] = {
                (SELECT COUNT(*) FROM invoices i WHERE i.customer_id = cu.id
                   AND i.status IN ('paid', 'partially_returned', 'fully_returned')) AS order_count,
                (SELECT date(MAX(i.paid_at)) FROM invoices i WHERE i.customer_id = cu.id
-                  AND i.status IN ('paid', 'partially_returned', 'fully_returned')) AS last_order_date
+                  AND i.status IN ('paid', 'partially_returned', 'fully_returned')) AS last_order_date,
+               cu.branch_id
         FROM customers cu LEFT JOIN customer_tiers t ON t.id = cu.tier_id
         WHERE cu.is_active = 1""",
 }
 ALLOWED_VIEWS = frozenset(VIEWS)
+# Cột AI được thấy của từng view (không có branch_id)
+VIEW_COLUMNS = {
+    "v_ai_products": "sku, name, category, brand, sale_price, cost_price, stock_qty, min_stock_level, status",
+    "v_ai_sales_lines": "invoice_code, sold_date, sold_hour, sold_weekday, sku, product_name, category, brand, quantity, "
+                        "net_revenue, vat_amount, cost_amount, customer_code, customer_tier, payment_method",
+    "v_ai_sales_daily": "sold_date, invoice_count, revenue, vat, gross_profit",
+    "v_ai_inventory": "sku, name, category, stock_qty, min_stock_level, sold_30d, stock_value",
+    "v_ai_purchases": "po_code, received_date, supplier_name, sku, product_name, quantity, unit_cost, line_total",
+    "v_ai_returns": "return_date, return_code, invoice_code, sku, product_name, quantity, refund_amount, item_condition, "
+                    "return_type, reason",
+    "v_ai_customers": "customer_code, tier, total_spent, loyalty_points, order_count, last_order_date",
+}
+
+
+def _base(name: str) -> str:
+    return "vb" + name[1:]  # v_ai_products -> vb_ai_products
+
+
+def branch_ctes(branch_id: int | None) -> str:
+    """CTE trùng tên các view v_ai_*, chỉ lấy dữ liệu của một chi nhánh (đặt trước câu SQL của AI)."""
+    cond = "branch_id IS NULL" if branch_id is None else f"branch_id = {int(branch_id)}"
+    return "WITH " + ",\n     ".join(f"{name} AS (SELECT {VIEW_COLUMNS[name]} FROM {_base(name)} WHERE {cond})"
+                                     for name in VIEWS)
 
 # Lược đồ gửi cho AI (lớp 2): chỉ tên view, cột và ý nghĩa
 VIEW_SCHEMA = """\
@@ -112,14 +138,16 @@ v_ai_customers(customer_code, tier, total_spent, loyalty_points, order_count, la
 
 
 def ensure_views(conn, recreate: bool = False) -> None:
-    """Tạo các view v_ai_* (SQLite). recreate=True khi khởi động để cập nhật định nghĩa mới."""
+    """Tạo view gốc vb_ai_* và view v_ai_* cho AI (SQLite). recreate=True khi khởi động để cập nhật định nghĩa mới."""
     if conn.dialect.name != "sqlite":
         return
     if recreate:
         for name in reversed(list(VIEWS)):
             conn.execute(text(f"DROP VIEW IF EXISTS {name}"))
+            conn.execute(text(f"DROP VIEW IF EXISTS {_base(name)}"))
     for name, body in VIEWS.items():
-        conn.execute(text(f"CREATE VIEW IF NOT EXISTS {name} AS {body}"))
+        conn.execute(text(f"CREATE VIEW IF NOT EXISTS {_base(name)} AS {body}"))
+        conn.execute(text(f"CREATE VIEW IF NOT EXISTS {name} AS SELECT {VIEW_COLUMNS[name]} FROM {_base(name)}"))
 
 
 # ---------------------------------------------------------------- Lớp 3: kiểm tra SQL
@@ -231,11 +259,17 @@ def readonly_connection(db: Session, timeout: float = TIMEOUT_SECONDS):
 
 
 def run_sql(db: Session, sql: str, timeout: float = TIMEOUT_SECONDS) -> QueryResult:
-    """Chạy câu SELECT đã qua validate_sql. Ném SQLTimeout khi quá thời gian, sqlite3.Error khi SQL lỗi."""
+    """Chạy câu SELECT đã qua validate_sql. Ném SQLTimeout khi quá thời gian, sqlite3.Error khi SQL lỗi.
+    Phiên của chủ cửa hàng (có chi nhánh): chỉ đọc dữ liệu chi nhánh đó."""
+    from app.services.branch_scope import current_branch, is_scoped
     safe = validate_sql(sql)  # kiểm tra lại ngay tại chỗ chạy, không tin bên gọi
+    scoped = is_scoped(db)
+    branch = current_branch(db)
     ensure_views(db.connection())
     db.commit()  # view mới tạo phải được ghi trước khi mở kết nối chỉ đọc
     wrapped = f"SELECT * FROM (\n{safe}\n) LIMIT {MAX_ROWS + 1}"  # lớp 5: luôn có LIMIT
+    if scoped:
+        wrapped = f"{branch_ctes(branch)}\n{wrapped}"
     with readonly_connection(db, timeout) as conn:
         try:
             cur = conn.execute(wrapped)

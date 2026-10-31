@@ -14,6 +14,7 @@ from app.schemas import PurchaseOrderIn
 from app.services import audit
 from app.services.codes import next_code
 from app.services.inventory import BusinessError, _create_product, _lock_products, change_stock
+from app.services.branch_scope import ALL_BRANCHES
 
 SERIAL_RE = re.compile(r"^[A-Za-z0-9\-/]{5,50}$")
 
@@ -42,7 +43,8 @@ def clean_serial(raw: str) -> str:
 
 # ---------------------------------------------------------------- Nhà cung cấp
 def next_supplier_code(db: Session) -> str:
-    nums = [int(c[3:]) for c in db.scalars(select(Supplier.code).where(Supplier.code.like("NCC%"))) if c[3:].isdigit()]
+    nums = [int(c[3:]) for c in db.scalars(select(Supplier.code).where(Supplier.code.like("NCC%")).execution_options(**ALL_BRANCHES))
+            if c[3:].isdigit()]
     return f"NCC{max(nums, default=0) + 1:02d}"
 
 
@@ -137,7 +139,7 @@ def confirm(db: Session, po: ImportReceipt, user: User, at: datetime | None = No
     products = _lock_products(db, [it.product_id for it in po.items])
     all_serials = [s for it in po.items for s in (it.serials or [])]
     if all_serials:
-        exists = db.scalars(select(ProductSerial.serial_no).where(ProductSerial.serial_no.in_(all_serials))).all()
+        exists = db.scalars(select(ProductSerial.serial_no).where(ProductSerial.serial_no.in_(all_serials)).execution_options(**ALL_BRANCHES)).all()
         if exists:
             raise BusinessError(f"Serial đã có trong hệ thống: {', '.join(sorted(exists))}", "DUPLICATE_SERIAL",
                                 details={"serials": sorted(exists)})  # FR-PUR-03

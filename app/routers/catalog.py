@@ -19,6 +19,7 @@ from app.services import app_settings, audit
 from app.services.inventory import BusinessError, adjust_stock, change_stock
 from app.services.purchasing import clean_serial
 from app.services.qr import qr_svg
+from app.services.branch_scope import ALL_BRANCHES
 
 router = APIRouter(prefix="/api", tags=["catalog"])
 
@@ -374,7 +375,7 @@ def update_serial(serial_id: int, data: SerialUpdateIn, db: Session = Depends(ge
             if new_no != s.serial_no:
                 if s.status != "in_stock":
                     raise BusinessError("Chỉ sửa số serial của máy còn trong kho")
-                if db.scalar(select(ProductSerial.id).where(ProductSerial.serial_no == new_no)):
+                if db.scalar(select(ProductSerial.id).where(ProductSerial.serial_no == new_no).execution_options(**ALL_BRANCHES)):
                     raise BusinessError(f"Serial {new_no} đã tồn tại")
                 audit.log(db, user, "SERIAL_UPDATE", "product_serials", s.id, old=s.serial_no, new=new_no)
                 s.serial_no = new_no

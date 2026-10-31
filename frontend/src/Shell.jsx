@@ -69,7 +69,7 @@ export default function Shell({ title, children }) {
         <div className="sidebar-foot">
           <div className="sidebar-user">
             <span className="avatar">{initialsOf(user.full_name)}</span>
-            <span className="who"><span className="strong">{user.full_name}</span><span className="muted small">{ROLE_VI[user.role]}</span></span>
+            <span className="who"><span className="strong">{user.full_name}</span><span className="muted small">{ROLE_VI[user.role]}{user.branch_name ? ` · ${user.branch_name}` : ''}</span></span>
           </div>
           <div className="sidebar-tools">
             <LangToggle />
@@ -91,7 +91,7 @@ export default function Shell({ title, children }) {
           <ThemeToggle />
           <div className="user-chip">
             <span className="avatar">{initialsOf(user.full_name)}</span>
-            <span className="who"><span className="strong">{user.full_name}</span><br /><span className="muted small">{ROLE_VI[user.role]}</span></span>
+            <span className="who"><span className="strong">{user.full_name}</span><br /><span className="muted small">{ROLE_VI[user.role]}{user.branch_name ? ` · ${user.branch_name}` : ''}</span></span>
           </div>
           <button className="btn ghost icon-only logout-btn" title={t('Đăng xuất')} aria-label={t('Đăng xuất')} onClick={logout}><Icon name="logout" /></button>
         </header>

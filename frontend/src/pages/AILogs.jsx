@@ -16,10 +16,14 @@ const STATUS = {
 
 export default function AILogs() {
   const { user } = useAuth()
-  const [f, setF] = useState({ feature: '', status: '' })
+  const [f, setF] = useState({ feature: '', status: '', branch_id: '' })
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState(null)
-  const { data, error } = useLoad(() => api.get('/ai/logs', { ...f, page, size: 30 }), [f.feature, f.status, page])
+  const { data, error } = useLoad(() => api.get('/ai/logs', { ...f, page, size: 30 }), [f.feature, f.status, f.branch_id, page])
+  const branches = data?.branches || []
+  const counts = data?.branch_counts || {}
+  const showBranch = user.role === 'admin' && f.branch_id === '' && branches.length > 0  // cột chi nhánh khi xem tất cả
+  const pick = (id) => { setPage(1); setOpen(null); setF({ ...f, branch_id: id }) }
   const ai = useLoad(() => api.get('/ai/status'), [])
   const set = (k) => (e) => { setPage(1); setF({ ...f, [k]: e.target.value }) }
   const sum = data?.summary || {}
@@ -36,6 +40,16 @@ export default function AILogs() {
         </div>
       )}
       <div className="card">
+        {/* Quản trị viên: tab từng chi nhánh kèm số lượt gọi AI; "Hệ thống" = không thuộc chi nhánh nào */}
+        {branches.length > 0 && (
+          <div className="tabs-line" role="tablist" aria-label={t('Chi nhánh')}>
+            {[['', t('Tất cả'), Object.values(counts).reduce((a, b) => a + b, 0)], ...branches.map((b) => [String(b.id), b.name, counts[b.id] || 0]),
+              ...(counts[0] ? [['0', t('Hệ thống'), counts[0]]] : [])].map(([id, name, n]) => (
+              <button key={id} type="button" role="tab" aria-selected={f.branch_id === id} className={f.branch_id === id ? 'active' : ''} onClick={() => pick(id)}>
+                {name} <span className="tab-count">({n})</span></button>
+            ))}
+          </div>
+        )}
         <div className="toolbar">
           <label>{t('Tính năng')}<select value={f.feature} onChange={set('feature')}><option value="">{t('Tất cả')}</option>
             {Object.entries(FEATURE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
@@ -46,11 +60,12 @@ export default function AILogs() {
         <ErrorBox error={error} />
         {!data ? <Loading /> : !data.items.length ? <Empty icon="history" title={t('Chưa có lượt gọi AI')} /> : <>
           <div className="table-wrap"><table>
-            <thead><tr><th>{t('Thời gian')}</th>{user.role !== 'staff' && <th>{t('Người dùng')}</th>}<th>{t('Tính năng')}</th><th>{t('Câu hỏi')}</th><th>{t('Trạng thái')}</th><th className="right">{t('Độ trễ')}</th><th>Model</th></tr></thead>
+            <thead><tr><th>{t('Thời gian')}</th>{showBranch && <th>{t('Chi nhánh')}</th>}{user.role !== 'staff' && <th>{t('Người dùng')}</th>}<th>{t('Tính năng')}</th><th>{t('Câu hỏi')}</th><th>{t('Trạng thái')}</th><th className="right">{t('Độ trễ')}</th><th>Model</th></tr></thead>
             <tbody>{data.items.map((r) => (
               <Fragment key={r.id}>
                 <tr className="clickable" onClick={() => setOpen(open === r.id ? null : r.id)} aria-expanded={open === r.id}>
                   <td className="small nowrap">{fmtDateTime(r.created_at)}</td>
+                  {showBranch && <td className="small">{r.branch_name || <span className="muted">{t('Hệ thống')}</span>}</td>}
                   {user.role !== 'staff' && <td>{r.user_name}</td>}
                   <td>{FEATURE[r.feature] || r.feature}{r.prompt_version && r.prompt_version !== '-' && <span className="badge">{r.prompt_version}</span>}</td>
                   <td className="small">{r.question?.length > 90 ? `${r.question.slice(0, 90)}…` : r.question}</td>
@@ -59,7 +74,7 @@ export default function AILogs() {
                   <td className="small muted">{r.model_name}</td>
                 </tr>
                 {open === r.id && (
-                  <tr><td colSpan={7}>
+                  <tr><td colSpan={showBranch ? 8 : 7}>
                     <div className="stack">
                       <div><div className="muted small">{t('Câu hỏi (đã che số điện thoại, email)')}</div><div>{r.question}</div></div>
                       {r.generated_sql && <div><div className="muted small">{t('SQL do AI sinh')}</div><pre className="sql-code"><code>{r.generated_sql}</code></pre></div>}

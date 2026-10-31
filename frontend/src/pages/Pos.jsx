@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api, openFile } from '../api.js'
 import { money, num } from '../format.js'
+import BarcodeScanner from '../ui/BarcodeScanner.jsx'
 import Icon from '../ui/Icon.jsx'
 import { Modal, MoneyInput, Thumb, useToast } from '../ui/kit.jsx'
 import { t } from '../i18n.js'
@@ -320,8 +321,23 @@ export default function Pos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restored, location.state])
 
+  const [cameraOpen, setCameraOpen] = useState(false)  // quét mã bằng camera
   const addByCode = async (code) => {
     try { addProduct(await api.get(`/products/by-code/${encodeURIComponent(code)}`)) } catch (err) { toast(err.message, 'error') }
+  }
+
+  // Thêm hàng theo mã vạch / SKU / serial (máy quét, gõ tay hoặc camera). Trả tên sản phẩm; mã sai thì ném lỗi.
+  const scanCode = async (code) => {
+    const p = await api.get(`/products/by-code/${encodeURIComponent(code)}`)
+    if (p.stock <= 0) throw new Error(t('{0} đã hết hàng', [t(p.name)]))
+    if (p.serial) {
+      if (p.serial.status !== 'in_stock') throw new Error(t('Serial {0} không còn trong kho', [p.serial.serial_no]))
+      addProduct(p, p.serial)
+    } else {
+      if (p.track_serial) setCameraOpen(false)  // máy theo serial: đóng camera để chọn serial (hộp chọn không bị che)
+      addProduct(p)
+    }
+    return t(p.name)
   }
 
   // FR-SAL-01: máy quét gửi mã như bàn phím rồi Enter
@@ -330,13 +346,7 @@ export default function Pos() {
     const code = e.target.value.trim()
     if (!code) return
     e.target.value = ''
-    try {
-      const p = await api.get(`/products/by-code/${encodeURIComponent(code)}`)
-      if (p.serial) {
-        if (p.serial.status !== 'in_stock') { toast(t('Serial {0} không còn trong kho', [p.serial.serial_no]), 'error'); return }
-        addProduct(p, p.serial)
-      } else addProduct(p)
-    } catch (err) { toast(err.message, 'error') }
+    try { await scanCode(code) } catch (err) { toast(err.message, 'error') }
   }
 
   const setQty = (i, q) => setLines((ls) => ls.map((l, j) => {
@@ -376,8 +386,10 @@ export default function Pos() {
     <div className={`pos ${lines.length ? 'has-cartbar' : ''}`}>
       <section className="pos-products card">
         <div className="toolbar">
-          <div className="grow input-icon"><Icon name="scan" />
+          <div className="grow input-icon has-action"><Icon name="scan" />
             <input ref={scanRef} placeholder={t('Quét mã vạch / SKU / serial rồi Enter')} onKeyDown={onScan} aria-label={t('Ô quét mã')} />
+            <button type="button" className="input-action scan-camera-btn" onClick={() => setCameraOpen(true)}
+              title={t('Quét bằng camera')} aria-label={t('Quét bằng camera')}><Icon name="camera" /></button>
           </div>
           <div className="grow input-icon"><Icon name="search" />
             <input placeholder={t('Tìm theo tên hoặc SKU (không cần dấu)')} value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -501,6 +513,7 @@ export default function Pos() {
       {pending && <TransferDialog invoice={pending} onClose={() => { setPending(null); reset(); toast(t('Hóa đơn đang chờ chuyển khoản, xem ở trang Hóa đơn')) }}
         onPaid={(inv) => { setPending(null); setPaid(inv); reset() }} />}
       {paid && <PaidDialog invoice={paid} onClose={() => { setPaid(null); scanRef.current?.focus() }} />}
+      {cameraOpen && <BarcodeScanner onCode={scanCode} onClose={() => { setCameraOpen(false); scanRef.current?.focus() }} />}
     </div>
   )
 }
