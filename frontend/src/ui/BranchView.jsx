@@ -1,6 +1,7 @@
 // Chi nhánh chính tổng hợp số liệu: chủ cửa hàng ở chi nhánh chính chọn xem tất cả chi nhánh, chi nhánh mình
 // hoặc một chi nhánh khác ở Tổng quan, Báo cáo, Hóa đơn (chỉ xem). Lựa chọn giữ nguyên khi chuyển trang.
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { useAuth } from '../auth.jsx'
 import { money, num } from '../format.js'
@@ -41,7 +42,16 @@ export function BranchPicker({ value, onChange }) {
 }
 
 // Bảng doanh thu từng chi nhánh (khi xem tất cả chi nhánh)
-export function BranchRevenue({ rows, title = t('Doanh thu theo chi nhánh') }) {
+// Liên kết sang trang Hóa đơn: hóa đơn tính doanh thu (lọc theo ngày thanh toán) trong kỳ, đúng chi nhánh.
+// branch: 'all' | '' (chi nhánh của mình) | id chi nhánh | null (không chọn chi nhánh).
+export function invoicesLink(from, to, branch) {
+  const p = new URLSearchParams({ status: 'revenue', date_from: from, date_to: to })
+  if (branch != null) p.set('branch', String(branch))
+  return `/invoices?${p}`
+}
+
+export function BranchRevenue({ rows, title = t('Doanh thu theo chi nhánh'), from, to }) {
+  const { user } = useAuth()
   if (!rows?.length) return null
   const total = rows.reduce((s, r) => s + r.revenue, 0)
   return (
@@ -51,7 +61,9 @@ export function BranchRevenue({ rows, title = t('Doanh thu theo chi nhánh') }) 
         <thead><tr><th>{t('Chi nhánh')}</th><th className="right">{t('Số hóa đơn')}</th><th className="right">{t('Doanh thu')}</th>
           <th className="right">{t('Tỉ trọng')}</th><th className="right">{t('Lãi gộp')}</th></tr></thead>
         <tbody>{rows.map((r) => (
-          <tr key={r.branch_id ?? 'none'}><td className="strong">{r.branch_name}</td><td className="right">{num(r.invoice_count)}</td>
+          <tr key={r.branch_id ?? 'none'}><td className="strong">{r.branch_name}</td><td className="right">{from && r.branch_id != null
+            ? <Link to={invoicesLink(from, to, r.branch_id === user.branch_id ? '' : r.branch_id)} title={t('Xem các hóa đơn này')}>{num(r.invoice_count)}</Link>
+            : num(r.invoice_count)}</td>
             <td className="right num">{money(r.revenue)}</td>
             <td className="right muted">{total ? `${((r.revenue / total) * 100).toFixed(1)}%` : '-'}</td>
             <td className="right num">{money(r.gross_profit)}</td></tr>

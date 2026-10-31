@@ -1236,4 +1236,7 @@ export default {
   "{0} phiếu nhập kho ở các chi nhánh trong 24 giờ qua": "{0} purchase orders received at other branches in the last 24 hours",
   "Nhập hàng: {0}": "Restock: {0}",
   "Nhập riêng sản phẩm này": "Restock this product only",
+  "Xem các hóa đơn này": "View these invoices",
+  "Tính doanh thu (theo ngày thanh toán)": "Counted in revenue (by payment date)",
+  "hoàn tiền đổi trả {0} · doanh thu {1}": "refunds {0} · revenue {1}",
 }

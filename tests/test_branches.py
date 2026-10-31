@@ -397,3 +397,35 @@ def test_main_branch_sees_purchases_of_other_branches_with_branch_and_person(cli
     assert "branch_imports" not in {i["type"] for i in client.get("/api/notifications", headers=owner_b).json()["items"]}
     # Chi nhánh thường không xem được phiếu chi nhánh khác
     assert client.get("/api/purchase-orders", params={"branch": "all"}, headers=owner_b).status_code == 403
+
+
+def test_dashboard_numbers_match_the_linked_invoice_list(client, admin_h, owner_h):
+    """Số hóa đơn, doanh thu ở Tổng quan khớp với trang Hóa đơn mở từ liên kết (status=revenue, cùng ngày, cùng chi nhánh)."""
+    b = make_branch(client, admin_h, "Cơ sở B")
+    owner_b = make_user(client, admin_h, "chub", "owner", b)
+    set_stock(client, owner_b, "PK003", 5)
+    _sell(client, owner_b, "PK003", 2)
+    sold = _sell(client, owner_h, "PK001", 2)
+    _sell(client, owner_h, "PK001")
+    # Không tính doanh thu: chờ chuyển khoản
+    r = client.post("/api/invoices", json={"items": [{"product_id": product_id(client, owner_h, "PK001"), "quantity": 1}],
+                                           "payment_method": "bank_transfer"}, headers=owner_h)
+    assert r.status_code == 201, r.text
+    # Trả 1 món: Tổng quan trừ tiền hoàn
+    item = client.get(f"/api/invoices/{sold['id']}", headers=owner_h).json()["items"][0]
+    r = client.post("/api/returns", json={"invoice_id": sold["id"], "reason": "Khách đổi ý không dùng",
+                                          "items": [{"invoice_item_id": item["id"], "quantity": 1}]}, headers=owner_h)
+    assert r.status_code == 201, r.text
+
+    dash = client.get("/api/reports/dashboard", params={"branch": "all"}, headers=owner_h).json()
+    day = {"status": "revenue", "date_from": dash["date"], "date_to": dash["date"]}
+    inv = client.get("/api/invoices", params={**day, "branch": "all"}, headers=owner_h).json()
+    assert inv["total"] == dash["today"]["invoice_count"] == 3
+    assert inv["sum_paid"] - inv["refunds"] == dash["today"]["revenue"]
+    for row in dash["by_branch_month"]:
+        one = client.get("/api/invoices", params={**day, "date_from": dash["date"][:8] + "01", "branch": row["branch_id"]},
+                         headers=owner_h).json()
+        assert one["total"] == row["invoice_count"]
+        assert one["sum_paid"] - one["refunds"] == row["revenue"]
+    # Danh sách thường (mọi trạng thái) vẫn có hóa đơn chờ chuyển khoản
+    assert client.get("/api/invoices", params={"branch": "all"}, headers=owner_h).json()["total"] == 4

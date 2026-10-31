@@ -83,15 +83,18 @@ export default function Invoices() {
   const { user } = useAuth()
   // Liên kết từ trang Tổng quan: ?status=pending_payment hoặc ?cancel=requested (xem mọi ngày)
   const [params] = useSearchParams()
-  const fromLink = params.get('status') || params.get('cancel')
-  const [f, setF] = useState({ q: '', status: params.get('status') || '', payment_method: '', date_from: fromLink ? '' : daysAgo(29),
-    date_to: fromLink ? '' : today(), cancel_requested: params.get('cancel') === 'requested' })
+  // Liên kết từ số liệu doanh thu (Tổng quan, Báo cáo): ?status=revenue&date_from&date_to&branch, khớp đúng số hóa đơn
+  const fromLink = params.get('status') === 'pending_payment' || params.get('cancel')
+  const [f, setF] = useState({ q: '', status: params.get('status') || '', payment_method: '',
+    date_from: params.get('date_from') ?? (fromLink ? '' : daysAgo(29)), date_to: params.get('date_to') ?? (fromLink ? '' : today()),
+    cancel_requested: params.get('cancel') === 'requested' })
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState(null)
   const [savedBranch, setBranch, multi] = useBranchView()
-  // Mở từ "Việc cần xử lý" ở Tổng quan: xem việc của chi nhánh mình (chỉ chi nhánh mình xử lý được)
-  const [forceOwn, setForceOwn] = useState(!!fromLink)
-  const branch = forceOwn ? '' : savedBranch
+  // Mở từ "Việc cần xử lý" ở Tổng quan: xem việc của chi nhánh mình (chỉ chi nhánh mình xử lý được).
+  // Mở từ số liệu doanh thu: xem đúng chi nhánh của số liệu đó (?branch=all | id | rỗng = chi nhánh mình)
+  const [override, setOverride] = useState(params.get('branch') ?? (fromLink ? '' : null))
+  const branch = multi && override != null ? override : savedBranch
   const showBranch = multi && branch !== ''
   const { data, loading, error, reload } = useLoad(() => api.get('/invoices', { ...f, branch, cancel_requested: f.cancel_requested || '', page, size: 20 }), [JSON.stringify(f), page, branch])
   const set = (k) => (e) => { setPage(1); setF({ ...f, [k]: e.target.value }) }
@@ -99,10 +102,10 @@ export default function Invoices() {
   return (
     <div className="card">
       <div className="toolbar">
-        {multi && <BranchPicker value={branch} onChange={(v) => { setPage(1); setForceOwn(false); setBranch(v) }} />}
+        {multi && <BranchPicker value={branch} onChange={(v) => { setPage(1); setOverride(null); setBranch(v) }} />}
         <label className="grow">{t('Tìm kiếm')}<input placeholder={t('Mã hóa đơn, tên hoặc SĐT khách')} value={f.q} onChange={set('q')} /></label>
         <label>{t('Trạng thái')}<select value={f.status} onChange={set('status')}>
-          <option value="">{t('Tất cả')}</option>{Object.entries(INVOICE_STATUS).map(([k, [v]]) => <option key={k} value={k}>{v}</option>)}
+          <option value="">{t('Tất cả')}</option><option value="revenue">{t('Tính doanh thu (theo ngày thanh toán)')}</option>{Object.entries(INVOICE_STATUS).map(([k, [v]]) => <option key={k} value={k}>{v}</option>)}
         </select></label>
         <label>{t('Thanh toán')}<select value={f.payment_method} onChange={set('payment_method')}>
           <option value="">{t('Tất cả')}</option>{Object.entries(PAY_VI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -119,7 +122,8 @@ export default function Invoices() {
       </div>
       <ErrorBox error={error} />
       {loading && !data ? <Loading /> : data && (<>
-        <p className="muted small mt-0">{data.total} {t('hóa đơn · doanh thu đã thanh toán')} {money(data.sum_paid)}{user.role === 'staff' ? t(' · bạn chỉ thấy hóa đơn mình lập') : ''}</p>
+        <p className="muted small mt-0">{data.total} {t('hóa đơn · doanh thu đã thanh toán')} {money(data.sum_paid)}{data.refunds
+          ? ` · ${t('hoàn tiền đổi trả {0} · doanh thu {1}', [money(data.refunds), money(data.sum_paid - data.refunds)])}` : ''}{user.role === 'staff' ? t(' · bạn chỉ thấy hóa đơn mình lập') : ''}</p>
         {!data.items.length ? <Empty title={t('Không có hóa đơn phù hợp')} /> : (
           <div className="table-wrap"><table>
             <thead><tr><th>{t('Mã')}</th>{showBranch && <th>{t('Chi nhánh')}</th>}<th>{t('Thời gian')}</th><th>{t('Khách hàng')}</th><th>{t('Nhân viên')}</th><th>{t('Thanh toán')}</th><th className="right">{t('Tổng tiền')}</th><th>{t('Trạng thái')}</th></tr></thead>

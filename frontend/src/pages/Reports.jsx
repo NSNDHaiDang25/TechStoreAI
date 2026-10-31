@@ -73,7 +73,7 @@ export default function Reports() {
           <Kpi icon="up" label={t('Lãi gộp')} value={money(s.gross_profit)}
             sub={s.revenue_net ? t('Biên lãi {0}%', [((s.gross_profit / s.revenue_net) * 100).toFixed(1)]) : ''} />
         </div>
-        <BranchRevenue rows={d.by_branch} />
+        <BranchRevenue rows={d.by_branch} from={range.date_from} to={range.date_to} />
         <div className="grid two">
           <div className="card"><div className="card-head"><h2><Icon name="chart" />{t('Doanh thu theo ngày')}</h2></div>
             <Chart build={dayChart} label={t('Doanh thu theo ngày trong kỳ')} /></div>

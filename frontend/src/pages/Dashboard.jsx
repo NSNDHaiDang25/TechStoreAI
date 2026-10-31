@@ -7,16 +7,17 @@ import Chart, { seriesChart } from '../ui/Chart.jsx'
 import Icon from '../ui/Icon.jsx'
 import { Empty, ErrorBox, Loading, useLoad } from '../ui/kit.jsx'
 import ProductCell from '../ui/ProductCell.jsx'
-import { BranchPicker, BranchRevenue, useBranchView } from '../ui/BranchView.jsx'
+import { BranchPicker, BranchRevenue, invoicesLink, useBranchView } from '../ui/BranchView.jsx'
 import { t } from '../i18n.js'
 
-export function Kpi({ icon, label, value, sub, color = '', featured }) {
-  return (
-    <div className={`card kpi-card ${featured ? 'featured' : ''}`}>
-      <div className={`kpi-icon ${color}`}><Icon name={icon} /></div>
-      <div className="min-w-0"><div className="label">{label}</div><div className="value">{value}</div>{sub && <div className="sub">{sub}</div>}</div>
-    </div>
-  )
+export function Kpi({ icon, label, value, sub, color = '', featured, to }) {
+  const body = <>
+    <div className={`kpi-icon ${color}`}><Icon name={icon} /></div>
+    <div className="min-w-0"><div className="label">{label}</div><div className="value">{value}</div>{sub && <div className="sub">{sub}</div>}</div>
+  </>
+  const cls = `card kpi-card ${featured ? 'featured' : ''}`
+  return to ? <Link className={cls} to={to} title={t('Xem các hóa đơn này')} style={{ color: featured ? undefined : 'inherit', textDecoration: 'none' }}>{body}</Link>
+    : <div className={cls}>{body}</div>
 }
 
 const dm = (s) => `${s.slice(8)}/${s.slice(5, 7)}`
@@ -33,8 +34,10 @@ export default function Dashboard() {
     <div className="stack">
       {picker}
       <div className="grid kpi">
-        <Kpi featured icon="wallet" label={t('Doanh thu hôm nay')} value={money(d.today.revenue)} sub={t('{0} hóa đơn', [d.today.invoice_count])} />
-        <Kpi icon="calendar" label={t('Doanh thu tháng này')} value={money(d.month.revenue)} sub={t('{0} hóa đơn · VAT {1}', [d.month.invoice_count, money(d.month.vat)])} />
+        <Kpi featured icon="wallet" label={t('Doanh thu hôm nay')} value={money(d.today.revenue)} sub={t('{0} hóa đơn', [d.today.invoice_count])}
+          to={invoicesLink(d.date, d.date, multi ? branch : null)} />
+        <Kpi icon="calendar" label={t('Doanh thu tháng này')} value={money(d.month.revenue)} sub={t('{0} hóa đơn · VAT {1}', [d.month.invoice_count, money(d.month.vat)])}
+          to={invoicesLink(`${d.date.slice(0, 8)}01`, d.date, multi ? branch : null)} />
         <Kpi icon="up" label={t('Lãi gộp tháng này')} value={money(d.month.gross_profit)} sub={margin ? t('Biên lãi {0}% trên doanh thu chưa VAT', [margin]) : t('Giá vốn {0}', [money(d.month.cost)])} />
         <Kpi icon="package" label={t('Sản phẩm đang bán')} value={num(d.product_count)} sub={t('{0} khách hàng', [num(d.customer_count)])} />
         <Kpi icon="alert" color={d.low_stock.length ? 'yellow' : ''} label={t('Cần nhập hàng')} value={num(d.low_stock.length)}
@@ -52,7 +55,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <BranchRevenue rows={d.by_branch_month} title={t('Doanh thu tháng này theo chi nhánh')} />
+      <BranchRevenue rows={d.by_branch_month} title={t('Doanh thu tháng này theo chi nhánh')} from={`${d.date.slice(0, 8)}01`} to={d.date} />
 
       <div className="card">
         <div className="card-head"><h2><Icon name="chart" />{t('Doanh thu 30 ngày gần nhất')}</h2><Link className="btn sm" to="/reports">{t('Xem báo cáo')}</Link></div>

@@ -61,6 +61,7 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(MANAGERS_VIEW)
     d["low_stock"] = _with_images(db, d["low_stock"])
     today = now().date()
     d["by_branch_month"] = _by_branch(db, datetime(today.year, today.month, 1), reports.parse_range(today, today)[1])
+    d["date"] = today.isoformat()  # để liên kết sang trang Hóa đơn đúng ngày máy chủ đang tính
     return d
 
 

@@ -13,7 +13,7 @@ from app.services import app_settings, audit, branch_scope, inventory, receipts,
 from app.services.inventory import BusinessError
 from app.services.mailer import MailError, mail_configured, send_logged
 from app.services.qr import qr_svg, vietqr_payload
-from app.services.reports import parse_range
+from app.services.reports import _returns_in, parse_range
 
 router = APIRouter(prefix="/api", tags=["invoices"])
 STATUS_PATTERN = "^(draft|pending_payment|paid|partially_returned|fully_returned|cancelled|revenue)$"
@@ -87,7 +87,9 @@ def invoice_query(user: User, q: str | None, status: str | None, date_from: str 
         stmt = stmt.where(Invoice.customer_id == customer_id)
     if date_from or date_to:
         start, end = parse_range(date_from, date_to)
-        stmt = stmt.where(Invoice.created_at >= start, Invoice.created_at < end)
+        # "Tính doanh thu": lọc theo ngày thanh toán, giống Tổng quan / Báo cáo doanh thu, để số hóa đơn khớp nhau
+        col = Invoice.paid_at if status == "revenue" else Invoice.created_at
+        stmt = stmt.where(col >= start, col < end)
     return stmt
 
 
@@ -121,8 +123,13 @@ def list_invoices(q: str | None = None, status: str | None = Query(None, pattern
                       .offset((page - 1) * size).limit(size)).unique().all()
     pending_cancel = db.scalar(select(func.count(Invoice.id)).where(
         Invoice.cancel_requested_at.is_not(None), Invoice.status == "paid")) if user.role != "staff" else None
+    # Doanh thu trong kỳ trừ tiền hoàn đổi trả trong kỳ, cách tính giống Tổng quan / Báo cáo doanh thu
+    refunds = None
+    if (status == "revenue" and (date_from or date_to) and user.role != "staff"
+            and not (q or payment_method or customer_id or cashier_id)):
+        refunds = sum(r[2] for r in _returns_in(db, *parse_range(date_from, date_to)))
     names = _branch_names(db)
-    return {"total": total, "sum_paid": int(sum_total), "cancel_requests": pending_cancel,
+    return {"total": total, "sum_paid": int(sum_total), "refunds": refunds, "cancel_requests": pending_cancel,
             "items": [{**invoice_out(i, False), "branch_name": names.get(i.branch_id)} for i in rows]}
 
 
