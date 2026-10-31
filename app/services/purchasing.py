@@ -13,7 +13,7 @@ from app.models import ImportItem, ImportReceipt, Product, ProductSerial, Suppli
 from app.schemas import PurchaseOrderIn
 from app.services import audit
 from app.services.codes import next_code
-from app.services.inventory import BusinessError, _create_product, _lock_products, change_stock
+from app.services.inventory import BusinessError, _create_product, _lock_products, change_stock, total_stock
 from app.services.branch_scope import ALL_BRANCHES
 
 SERIAL_RE = re.compile(r"^[A-Za-z0-9\-/]{5,50}$")
@@ -69,6 +69,9 @@ def _fill_items(db: Session, po: ImportReceipt, data: PurchaseOrderIn, user: Use
         if item.new_product is not None:
             if user.role == "staff":
                 raise BusinessError("Nhân viên không được tạo sản phẩm mới, hãy nhờ chủ cửa hàng")
+            if user.role == "owner" and not user.branch_is_main:  # danh mục dùng chung do chi nhánh chính quản lý
+                raise BusinessError("Danh mục sản phẩm dùng chung cho mọi chi nhánh, chỉ chi nhánh chính được thêm "
+                                    "sản phẩm mới. Hãy chọn sản phẩm có sẵn", status=403)
             key = " ".join(item.new_product.name.split()).casefold()
             if key not in created:
                 created[key] = _create_product(db, item.new_product, item.unit_cost or 0)
@@ -151,7 +154,7 @@ def confirm(db: Session, po: ImportReceipt, user: User, at: datetime | None = No
             raise BusinessError(f"'{p.name}' quản lý theo serial: cần nhập đủ {it.quantity} serial "
                                 f"(đang có {len(it.serials or [])})")
         # BR-19: giá vốn bình quân gia quyền, làm tròn đến đồng
-        old_qty = max(p.stock, 0)
+        old_qty = max(total_stock(db, p.id), 0)  # giá vốn dùng chung: tính trên tồn của mọi chi nhánh
         p.cost_price = round((old_qty * p.cost_price + it.quantity * it.unit_cost) / (old_qty + it.quantity))
         change_stock(db, p, it.quantity, "import", po.code, user, at=at)
         for s in it.serials or []:
@@ -182,9 +185,10 @@ def cancel(db: Session, po: ImportReceipt, reason: str, user: User) -> ImportRec
                 raise BusinessError(f"Không thể hủy: {sold} máy '{p.name}' của phiếu này đã bán hoặc đang xử lý")
         for it in po.items:
             p = products[it.product_id]
-            remain = p.stock - it.quantity
+            total = total_stock(db, p.id)
+            remain = total - it.quantity
             if remain > 0:
-                p.cost_price = max(0, round((p.stock * p.cost_price - it.quantity * it.unit_cost) / remain))
+                p.cost_price = max(0, round((total * p.cost_price - it.quantity * it.unit_cost) / remain))
             change_stock(db, p, -it.quantity, "import_cancel", po.code, user, note=reason)
             db.query(ProductSerial).filter(ProductSerial.purchase_item_id == it.id).delete()
         audit.log(db, user, "PURCHASE_CANCEL", "import_receipts", po.id,

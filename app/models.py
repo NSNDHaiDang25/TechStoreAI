@@ -4,8 +4,9 @@ Tên cột giữ theo phiên bản đầu để CSDL cũ vẫn chạy; bảng đ
 """
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import (JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func,
+                        select)
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from app.database import Base
 
@@ -46,6 +47,8 @@ class Branch(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True)
     address: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Chi nhánh chính: chủ cửa hàng ở đây xem được hóa đơn, doanh thu, báo cáo của mọi chi nhánh (chỉ xem)
+    is_main: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
@@ -74,6 +77,10 @@ class User(Base):
     @property
     def branch_name(self) -> str | None:
         return self.branch.name if self.branch else None
+
+    @property
+    def branch_is_main(self) -> bool:
+        return bool(self.branch and self.branch.is_main)
 
 
 class FaceProfile(Base):
@@ -186,7 +193,9 @@ class Category(Base):
     products: Mapped[list["Product"]] = relationship(back_populates="category")
 
 
-class Product(BranchOwned, Base):
+class Product(Base):
+    """Danh mục sản phẩm dùng chung cho mọi chi nhánh (tên, giá, ảnh... giống nhau). Tồn kho riêng từng chi nhánh
+    nằm ở BranchStock; Product.stock là tồn của chi nhánh đang xem (xem cuối file)."""
     __tablename__ = "products"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(30), unique=True, index=True)  # SKU
@@ -198,7 +207,6 @@ class Product(BranchOwned, Base):
     sale_price: Mapped[int] = mapped_column(Integer, default=0)  # đã gồm VAT (BR-01)
     cost_price: Mapped[int] = mapped_column(Integer, default=0)  # giá vốn bình quân (BR-19)
     vat_rate: Mapped[int] = mapped_column(Integer, default=10)
-    stock: Mapped[int] = mapped_column(Integer, default=0)
     min_stock: Mapped[int] = mapped_column(Integer, default=5)
     track_serial: Mapped[bool] = mapped_column(Boolean, default=False)
     warranty_months: Mapped[int] = mapped_column(Integer, default=12)
@@ -208,6 +216,25 @@ class Product(BranchOwned, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
     category: Mapped[Category | None] = relationship(back_populates="products")
+
+
+class BranchStock(BranchOwned, Base):
+    """Tồn kho của một sản phẩm tại một chi nhánh. Chỉ ghi qua inventory.change_stock (luôn kèm thẻ kho)."""
+    __tablename__ = "branch_stocks"
+    __table_args__ = (UniqueConstraint("branch_id", "product_id", name="uq_branch_stock"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), index=True)
+    stock: Mapped[int] = mapped_column(Integer, default=0)
+    product: Mapped[Product] = relationship()
+
+
+# Tồn kho theo phạm vi chi nhánh của phiên CSDL: bộ lọc chi nhánh (branch_scope) tự áp vào truy vấn con này, nên
+# chủ cửa hàng / nhân viên thấy tồn của chi nhánh mình, chi nhánh chính xem "tất cả" thấy tổng mọi chi nhánh.
+# Dùng được như cột thường: Product.stock > 0, order_by(Product.stock), func.sum(Product.stock * ...).
+# Product(stock=n) khi tạo mới: branch_scope ghi n vào tồn của chi nhánh người tạo.
+Product.stock = column_property(
+    select(func.coalesce(func.sum(BranchStock.stock), 0)).where(BranchStock.product_id == Product.id)
+    .correlate_except(BranchStock).scalar_subquery())
 
 
 class ProductSerial(BranchOwned, Base):
@@ -224,7 +251,8 @@ class ProductSerial(BranchOwned, Base):
 
 
 # ======================================================================= Nhập hàng và kho
-class Supplier(BranchOwned, Base):
+class Supplier(Base):
+    """Nhà cung cấp dùng chung cho mọi chi nhánh (chi nhánh chính quản lý). Phiếu nhập vẫn riêng từng chi nhánh."""
     __tablename__ = "suppliers"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True)

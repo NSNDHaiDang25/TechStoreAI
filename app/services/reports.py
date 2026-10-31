@@ -11,7 +11,7 @@ from datetime import date, datetime, time, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import (PAID_STATES, Category, Customer, Invoice, InvoiceItem, Product, Return, ReturnItem, now)
+from app.models import (PAID_STATES, Branch, BranchStock, Category, Customer, Invoice, InvoiceItem, Product, Return, ReturnItem, now)
 
 
 def parse_range(date_from: str | date | None, date_to: str | date | None,
@@ -66,6 +66,35 @@ def revenue_total(db: Session, start: datetime, end: datetime) -> dict:
         "discount": int(row[2]), "vat": vat, "revenue_net": revenue - vat, "cost": cost,
         "gross_profit": revenue - vat - cost,
     }
+
+
+def revenue_by_branch(db: Session, start: datetime, end: datetime) -> list[dict]:
+    """Doanh thu, lãi gộp từng chi nhánh trong phạm vi đang xem (chi nhánh chính xem mọi chi nhánh).
+    Cách tính giống revenue_total: tiền hoàn đổi trả trừ vào chi nhánh của hóa đơn gốc."""
+    agg: dict[int | None, dict] = defaultdict(lambda: {"invoice_count": 0, "gross_sales": 0, "refunds": 0,
+                                                       "vat": 0, "cost": 0})
+    for bid, count, total, vat in db.execute(
+            select(Invoice.branch_id, func.count(Invoice.id), func.coalesce(func.sum(Invoice.total), 0),
+                   func.coalesce(func.sum(Invoice.vat_amount), 0))
+            .where(*_paid_in(start, end)).group_by(Invoice.branch_id)):
+        a = agg[bid]
+        a["invoice_count"], a["gross_sales"], a["vat"] = count, int(total), int(vat)
+    for bid, cost in db.execute(
+            select(Invoice.branch_id, func.coalesce(func.sum(InvoiceItem.unit_cost * InvoiceItem.quantity), 0))
+            .select_from(InvoiceItem).join(Invoice).where(*_paid_in(start, end)).group_by(Invoice.branch_id)):
+        agg[bid]["cost"] = int(cost)
+    for _, _, refund, cost, vat, it in _returns_in(db, start, end):
+        a = agg[it.branch_id]
+        a["refunds"] += refund
+        a["vat"] -= vat
+        a["cost"] -= cost
+    names = dict(db.execute(select(Branch.id, Branch.name)).all())
+    rows = []
+    for bid, a in agg.items():
+        revenue = a["gross_sales"] - a["refunds"]
+        rows.append({"branch_id": bid, "branch_name": names.get(bid, "Chưa gán chi nhánh"), **a, "revenue": revenue,
+                     "revenue_net": revenue - a["vat"], "gross_profit": revenue - a["vat"] - a["cost"]})
+    return sorted(rows, key=lambda r: -r["revenue"])
 
 
 def revenue_by_day(db: Session, start: datetime, end: datetime) -> list[dict]:
@@ -166,7 +195,20 @@ def inventory_report(db: Session, days_unsold: int = 30) -> dict:
 
 
 def low_stock(db: Session) -> list[dict]:
-    """FR-STK-02: tồn nhỏ hơn ngưỡng cảnh báo của sản phẩm (mặc định low_stock_threshold = 5)."""
+    """FR-STK-02: tồn nhỏ hơn ngưỡng cảnh báo của sản phẩm (mặc định low_stock_threshold = 5).
+    Chi nhánh chính xem tất cả chi nhánh: xét tồn TỪNG chi nhánh (mỗi dòng một sản phẩm tại một chi nhánh),
+    không cộng gộp, để chi nhánh hết hàng không bị che bởi chi nhánh khác còn nhiều."""
+    from app.services.branch_scope import viewing_all
+    if viewing_all(db):
+        stock = func.coalesce(BranchStock.stock, 0)
+        rows = db.execute(
+            select(Product.code, Product.name, Product.min_stock, Branch.id, Branch.name, stock)
+            .select_from(Product).join(Branch, Branch.is_active.is_(True))
+            .outerjoin(BranchStock, (BranchStock.product_id == Product.id) & (BranchStock.branch_id == Branch.id))
+            .where(Product.status == "active", stock < Product.min_stock)
+            .order_by(stock, Product.name, Branch.id)).all()
+        return [{"code": code, "name": name, "stock": qty, "min_stock": min_stock, "branch_id": bid,
+                 "branch_name": bname} for code, name, min_stock, bid, bname, qty in rows]
     rows = db.scalars(
         select(Product).where(Product.status == "active", Product.stock < Product.min_stock)
         .order_by(Product.stock)

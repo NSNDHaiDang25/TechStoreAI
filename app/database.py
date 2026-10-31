@@ -49,6 +49,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 # Cột được thêm sau phiên bản đầu. create_all() không sửa bảng đã có nên bổ sung bằng ALTER TABLE,
 # giúp CSDL cũ vẫn chạy mà không phải xóa dữ liệu.
 ADDED_COLUMNS = {
+    "branches": {"is_main": "BOOLEAN NOT NULL DEFAULT FALSE"},
     "users": {
         "pending": "BOOLEAN NOT NULL DEFAULT FALSE",
         "email": "VARCHAR(100)", "phone": "VARCHAR(15)",
@@ -134,6 +135,16 @@ DATA_MIGRATIONS = {
 # Cột đã bỏ khỏi model. CSDL cũ vẫn còn cột (NOT NULL, không có mặc định) nên INSERT mới bị từ chối: xóa đi.
 DROPPED_COLUMNS = {
     "users": ["must_change_password"],  # bỏ bắt đổi mật khẩu lần đầu
+    "products": ["stock"],  # tồn kho chuyển sang branch_stocks (danh mục chung, tồn riêng từng chi nhánh)
+}
+
+# Chạy trước khi bỏ cột: chuyển dữ liệu cũ sang chỗ lưu mới
+BEFORE_DROP = {
+    ("products", "stock"): [
+        "INSERT INTO branch_stocks (branch_id, product_id, stock) "
+        "SELECT branch_id, id, stock FROM products WHERE stock <> 0 "
+        "AND NOT EXISTS (SELECT 1 FROM branch_stocks b WHERE b.product_id = products.id)",
+    ],
 }
 
 
@@ -141,11 +152,8 @@ def ensure_schema(bind) -> None:
     Base.metadata.create_all(bind)
     inspector = inspect(bind)
     with bind.begin() as conn:
-        for table, columns in DROPPED_COLUMNS.items():
-            existing = {c["name"] for c in inspector.get_columns(table)}
-            for name in columns:
-                if name in existing:
-                    conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {name}"))
+        from app.ai.text_to_sql import drop_views, ensure_views
+        drop_views(conn)  # view cũ có thể dùng cột sắp bỏ (SQLite không cho bỏ cột view đang dùng); tạo lại ở dưới
         for table, columns in ADDED_COLUMNS.items():
             existing = {c["name"] for c in inspector.get_columns(table)}
             for name, ddl in columns.items():
@@ -153,7 +161,13 @@ def ensure_schema(bind) -> None:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
                     for sql in DATA_MIGRATIONS.get((table, name), []):
                         conn.execute(text(sql))
-        from app.ai.text_to_sql import ensure_views
+        for table, columns in DROPPED_COLUMNS.items():
+            existing = {c["name"] for c in inspect(conn).get_columns(table)}
+            for name in columns:
+                if name in existing:
+                    for sql in BEFORE_DROP.get((table, name), []):
+                        conn.execute(text(sql))
+                    conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {name}"))
         ensure_views(conn, recreate=True)  # view v_ai_* cho hỏi đáp dữ liệu (SRS 6.5, 7.5)
     from app.services.bootstrap import ensure_reference_data
     ensure_reference_data(bind)

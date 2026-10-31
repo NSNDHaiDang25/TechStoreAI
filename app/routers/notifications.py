@@ -10,7 +10,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import PAID_STATES, TICKET_OPEN, AILog, ImportReceipt, Invoice, Product, User, WarrantyTicket, now
+from app.models import (PAID_STATES, TICKET_OPEN, AILog, Branch, ImportReceipt, Invoice, Product, User,
+                        WarrantyTicket, now)
+from app.services.branch_scope import ALL_BRANCHES
 from app.security import ANY_ROLE
 
 router = APIRouter(prefix="/api", tags=["notifications"])
@@ -79,6 +81,18 @@ def notifications(db: Session = Depends(get_db), user: User = Depends(ANY_ROLE))
             codes = db.scalars(cancel.with_only_columns(Invoice.code)
                                .order_by(Invoice.cancel_requested_at.desc()).limit(SAMPLE)).all()
             items.append(_item("cancel_requests", n, latest, codes))
+
+        if user.branch_is_main:  # chi nhánh chính: các chi nhánh khác vừa nhập kho (24 giờ qua)
+            cond = (ImportReceipt.status == "confirmed", ImportReceipt.branch_id != user.branch_id,
+                    ImportReceipt.received_at >= now() - timedelta(hours=PAYMENT_HOURS))
+            n, latest = db.execute(select(func.count(ImportReceipt.id), func.max(ImportReceipt.received_at))
+                                   .where(*cond).execution_options(**ALL_BRANCHES)).one()
+            if n:
+                recent = db.execute(select(ImportReceipt.code, Branch.name.label("branch"))
+                                    .join(Branch, Branch.id == ImportReceipt.branch_id).where(*cond)
+                                    .order_by(ImportReceipt.received_at.desc()).limit(SAMPLE)
+                                    .execution_options(**ALL_BRANCHES)).all()
+                items.append(_item("branch_imports", n, latest, [f"{r.code} ({r.branch})" for r in recent]))
 
     if user.role == "admin":
         waiting = select(User.full_name, User.created_at).where(User.pending.is_(True))

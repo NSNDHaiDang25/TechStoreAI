@@ -57,6 +57,8 @@ function SupplierHistory({ id, onClose }) {
 export default function Suppliers() {
   const { user } = useAuth()
   const owner = user.role === 'owner'
+  // Nhà cung cấp dùng chung cho mọi chi nhánh: chỉ chi nhánh chính thêm / sửa / xóa
+  const editor = owner && user.branch_is_main
   const toast = useToast()
   const [q, setQ] = useState('')
   const [dialog, setDialog] = useState(null)
@@ -66,18 +68,19 @@ export default function Suppliers() {
     <div className="card">
       <div className="toolbar">
         <label className="grow">{t('Tìm nhà cung cấp')}<input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Mã, tên, số điện thoại')} /></label>
-        {owner && <div className="actions"><button className="btn primary" onClick={() => setDialog({ type: 'form' })}><Icon name="plus" />{t('Thêm nhà cung cấp')}</button></div>}
+        {owner && !editor && <p className="muted small m-0" style={{ flexBasis: '100%' }}>{t('Nhà cung cấp dùng chung cho mọi chi nhánh, do chi nhánh chính quản lý. Số phiếu và tổng nhập là của chi nhánh bạn.')}</p>}
+        {editor && <div className="actions"><button className="btn primary" onClick={() => setDialog({ type: 'form' })}><Icon name="plus" />{t('Thêm nhà cung cấp')}</button></div>}
       </div>
       <ErrorBox error={error} />
       {loading && !data ? <Loading /> : data && (!data.length ? <Empty title={t('Chưa có nhà cung cấp')} /> : (
         <div className="table-wrap"><table>
-          <thead><tr><th>{t('Mã')}</th><th>{t('Tên')}</th><th>{t('Liên hệ')}</th><th>{t('Điện thoại')}</th>{owner && <><th className="right">{t('Số phiếu')}</th><th className="right">{t('Tổng nhập')}</th></>}<th>{t('Trạng thái')}</th>{owner && <th />}</tr></thead>
+          <thead><tr><th>{t('Mã')}</th><th>{t('Tên')}</th><th>{t('Liên hệ')}</th><th>{t('Điện thoại')}</th>{owner && <><th className="right">{t('Số phiếu')}</th><th className="right">{t('Tổng nhập')}</th></>}<th>{t('Trạng thái')}</th>{editor && <th />}</tr></thead>
           <tbody>{data.map((s) => (
             <tr key={s.id} className="clickable" onClick={() => setDialog({ type: 'history', id: s.id })}>
               <td>{s.code}</td><td className="strong">{s.name}</td><td>{s.contact_name || '-'}</td><td>{s.phone || '-'}</td>
               {owner && <><td className="right">{s.order_count}</td><td className="right num">{money(s.total_amount)}</td></>}
               <td>{s.status === 'active' ? <span className="badge green">{t('Đang hợp tác')}</span> : <span className="badge">{t('Ngừng')}</span>}</td>
-              {owner && <td className="right nowrap" onClick={(e) => e.stopPropagation()}>
+              {editor && <td className="right nowrap" onClick={(e) => e.stopPropagation()}>
                 <button className="btn sm" onClick={() => setDialog({ type: 'form', s })}><Icon name="edit" /></button>
                 <button className="btn sm danger" onClick={() => remove(s)}><Icon name="trash" /></button></td>}
             </tr>

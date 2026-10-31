@@ -29,10 +29,13 @@ _TODAY = "date('now', '+7 hours')"
 # AI chỉ thấy v_ai_* = view gốc bỏ cột branch_id. Khi chạy SQL của chủ cửa hàng, run_sql() đặt CTE trùng tên v_ai_*
 # chỉ lấy dòng của chi nhánh đó, che view chung (mỗi chi nhánh độc lập).
 VIEWS: dict[str, str] = {
+    # Danh mục chung, tồn kho riêng: mỗi sản phẩm một dòng cho từng chi nhánh, tồn lấy từ branch_stocks
     "v_ai_products": """
         SELECT p.code AS sku, p.name, c.name AS category, p.brand, p.sale_price, p.cost_price,
-               p.stock AS stock_qty, p.min_stock AS min_stock_level, p.status, p.branch_id
-        FROM products p LEFT JOIN categories c ON c.id = p.category_id
+               COALESCE(bs.stock, 0) AS stock_qty, p.min_stock AS min_stock_level, p.status, b.id AS branch_id
+        FROM products p CROSS JOIN branches b
+        LEFT JOIN branch_stocks bs ON bs.product_id = p.id AND bs.branch_id = b.id
+        LEFT JOIN categories c ON c.id = p.category_id
         WHERE p.status = 'active'""",
     "v_ai_sales_lines": """
         SELECT i.code AS invoice_code, date(i.paid_at) AS sold_date,
@@ -56,11 +59,15 @@ VIEWS: dict[str, str] = {
                SUM(vat_amount) AS vat, SUM(net_revenue - vat_amount - cost_amount) AS gross_profit, branch_id
         FROM vb_ai_sales_lines GROUP BY branch_id, sold_date""",
     "v_ai_inventory": f"""
-        SELECT p.code AS sku, p.name, c.name AS category, p.stock AS stock_qty, p.min_stock AS min_stock_level,
+        SELECT p.code AS sku, p.name, c.name AS category, COALESCE(bs.stock, 0) AS stock_qty,
+               p.min_stock AS min_stock_level,
                COALESCE((SELECT SUM(s.quantity) FROM vb_ai_sales_lines s
-                         WHERE s.sku = p.code AND s.sold_date >= date({_TODAY}, '-30 day')), 0) AS sold_30d,
-               p.stock * p.cost_price AS stock_value, p.branch_id
-        FROM products p LEFT JOIN categories c ON c.id = p.category_id
+                         WHERE s.sku = p.code AND s.branch_id = b.id
+                           AND s.sold_date >= date({_TODAY}, '-30 day')), 0) AS sold_30d,
+               COALESCE(bs.stock, 0) * p.cost_price AS stock_value, b.id AS branch_id
+        FROM products p CROSS JOIN branches b
+        LEFT JOIN branch_stocks bs ON bs.product_id = p.id AND bs.branch_id = b.id
+        LEFT JOIN categories c ON c.id = p.category_id
         WHERE p.status = 'active'""",
     "v_ai_purchases": """
         SELECT r.code AS po_code, date(COALESCE(r.received_at, r.created_at)) AS received_date,
@@ -137,14 +144,20 @@ v_ai_customers(customer_code, tier, total_spent, loyalty_points, order_count, la
   -- khách hàng ẩn danh (chỉ có mã KHxxxx, không có tên, số điện thoại, email, địa chỉ)"""
 
 
+def drop_views(conn) -> None:
+    if conn.dialect.name != "sqlite":
+        return
+    for name in reversed(list(VIEWS)):
+        conn.execute(text(f"DROP VIEW IF EXISTS {name}"))
+        conn.execute(text(f"DROP VIEW IF EXISTS {_base(name)}"))
+
+
 def ensure_views(conn, recreate: bool = False) -> None:
     """Tạo view gốc vb_ai_* và view v_ai_* cho AI (SQLite). recreate=True khi khởi động để cập nhật định nghĩa mới."""
     if conn.dialect.name != "sqlite":
         return
     if recreate:
-        for name in reversed(list(VIEWS)):
-            conn.execute(text(f"DROP VIEW IF EXISTS {name}"))
-            conn.execute(text(f"DROP VIEW IF EXISTS {_base(name)}"))
+        drop_views(conn)
     for name, body in VIEWS.items():
         conn.execute(text(f"CREATE VIEW IF NOT EXISTS {_base(name)} AS {body}"))
         conn.execute(text(f"CREATE VIEW IF NOT EXISTS {name} AS SELECT {VIEW_COLUMNS[name]} FROM {_base(name)}"))

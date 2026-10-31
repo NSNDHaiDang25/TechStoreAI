@@ -86,7 +86,7 @@ def db(engine):
     session = Session()
     admin = User(username="admin", full_name="Admin", password_hash=hash_password("admin123"), role="admin")
     # Chủ cửa hàng, nhân viên và dữ liệu mẫu thuộc "Chi nhánh chính" (mỗi chi nhánh độc lập)
-    main = Branch(name="Chi nhánh chính")
+    main = Branch(name="Chi nhánh chính", is_main=True)
     session.add(main)
     session.flush()
     # Phiên CSDL của test làm việc trong chi nhánh chính: dữ liệu test thêm thẳng vào CSDL tự gắn chi nhánh này
@@ -100,11 +100,11 @@ def db(engine):
     session.flush()
     session.add_all([
         Product(code="PK001", name="Tai nghe Bluetooth A1", category_id=acc.id, sale_price=350_000,
-                cost_price=220_000, stock=12, description="Pin 20 giờ", branch_id=main.id),
+                cost_price=220_000, stock=12, description="Pin 20 giờ"),
         Product(code="PK002", name="Tai nghe Bluetooth A2 Pro", category_id=acc.id, sale_price=490_000,
-                cost_price=310_000, stock=0, description="Pin 30 giờ, chống ồn", branch_id=main.id),
+                cost_price=310_000, stock=0, description="Pin 30 giờ, chống ồn"),
         Product(code="PK003", name="Sạc nhanh 20W", category_id=acc.id, sale_price=190_000,
-                cost_price=95_000, stock=50, description="Sạc nhanh PD", branch_id=main.id),
+                cost_price=95_000, stock=50, description="Sạc nhanh PD"),
         Customer(code="KH0001", name="Phạm Minh Anh", phone="0901234567", group="vip", branch_id=main.id),
     ])
     session.commit()

@@ -201,6 +201,8 @@ function ImportDialog({ onClose, onDone }) {
 export default function Products() {
   const { user } = useAuth()
   const owner = user.role === 'owner'
+  // Danh mục sản phẩm dùng chung: chỉ chi nhánh chính thêm / sửa / xóa; chi nhánh nào cũng tự kiểm kê kho của mình
+  const editor = owner && user.branch_is_main
   const toast = useToast()
   const [f, setF] = useState({ q: '', category_id: '', status: '', stock: '', min_price: '', max_price: '' })
   const [page, setPage] = useState(1)
@@ -223,7 +225,8 @@ export default function Products() {
           {Object.entries(STOCK).map(([k, [v]]) => <option key={k} value={k}>{v}</option>)}</select></label>
         <label>{t('Giá từ')}<input value={f.min_price} onChange={set('min_price')} inputMode="numeric" style={{ width: 110 }} /></label>
         <label>{t('đến')}<input value={f.max_price} onChange={set('max_price')} inputMode="numeric" style={{ width: 110 }} /></label>
-        {owner && <div className="actions">
+        {owner && !editor && <p className="muted small m-0" style={{ flexBasis: '100%' }}>{t('Danh mục sản phẩm dùng chung cho mọi chi nhánh, do chi nhánh chính quản lý. Tồn kho hiển thị là của {0}.', [user.branch_name])}</p>}
+        {editor && <div className="actions">
           <button className="btn" onClick={() => setDialog({ type: 'cats' })}><Icon name="tag" />{t('Nhóm hàng')}</button>
           <button className="btn" onClick={() => setDialog({ type: 'import' })}><Icon name="upload" />{t('Nhập từ Excel')}</button>
           <button className="btn primary" onClick={() => setDialog({ type: 'form' })}><Icon name="plus" />{t('Thêm sản phẩm')}</button>
@@ -246,8 +249,8 @@ export default function Products() {
               <td className="right nowrap">
                 {p.track_serial && <button className="btn sm" onClick={() => setDialog({ type: 'serials', p })} title="Serial"><Icon name="barcode" /></button>}
                 {owner && !p.track_serial && <button className="btn sm" onClick={() => setDialog({ type: 'adjust', p })} title={t('Kiểm kê')}><Icon name="clipboard" /></button>}
-                {owner && <button className="btn sm" onClick={() => setDialog({ type: 'form', p })} title={t('Sửa')}><Icon name="edit" /></button>}
-                {owner && <button className="btn sm danger" onClick={() => remove(p)} title={t('Xóa')}><Icon name="trash" /></button>}
+                {editor && <button className="btn sm" onClick={() => setDialog({ type: 'form', p })} title={t('Sửa')}><Icon name="edit" /></button>}
+                {editor && <button className="btn sm danger" onClick={() => remove(p)} title={t('Xóa')}><Icon name="trash" /></button>}
               </td>
             </tr>
           ))}</tbody>

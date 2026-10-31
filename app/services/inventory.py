@@ -12,10 +12,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.models import (
-    Category, Customer, ImportItem, ImportReceipt, Invoice, InvoiceItem, Product, StockMovement, User, now,
+    BranchStock, Category, Customer, ImportItem, ImportReceipt, Invoice, InvoiceItem, Product, StockMovement, User, now,
 )
 from app.schemas import ImportIn, InvoiceIn, NewProductIn
-from app.services.branch_scope import ALL_BRANCHES
+from app.services.branch_scope import ALL_BRANCHES, current_branch
 
 
 class BusinessError(Exception):
@@ -31,23 +31,48 @@ class BusinessError(Exception):
         return APIError(self.status, str(self), self.code, self.details)
 
 
+def branch_stock(db: Session, product_id: int, branch_id: int | None) -> int:
+    """Tồn của sản phẩm tại một chi nhánh (đọc thẳng, không phụ thuộc phạm vi đang xem)."""
+    return db.scalar(select(BranchStock.stock).where(BranchStock.product_id == product_id,
+                                                     _same_branch(branch_id))
+                     .execution_options(**ALL_BRANCHES)) or 0
+
+
+def total_stock(db: Session, product_id: int) -> int:
+    """Tổng tồn mọi chi nhánh: tính giá vốn bình quân (giá vốn dùng chung cho cả danh mục)."""
+    return db.scalar(select(func.coalesce(func.sum(BranchStock.stock), 0)).where(BranchStock.product_id == product_id)
+                     .execution_options(**ALL_BRANCHES)) or 0
+
+
+def _same_branch(branch_id: int | None):
+    return BranchStock.branch_id.is_(None) if branch_id is None else BranchStock.branch_id == branch_id
+
+
 def change_stock(db: Session, product: Product, delta: int, type_: str, ref: str | None,
-                 user: User | None, note: str | None = None, at: datetime | None = None) -> None:
-    """FR-STK-06: trừ tồn bằng một câu UPDATE có điều kiện stock >= số cần trừ rồi kiểm tra số dòng bị ảnh hưởng,
+                 user: User | None, note: str | None = None, at: datetime | None = None,
+                 branch_id: int | None = None) -> None:
+    """Đổi tồn của sản phẩm tại một chi nhánh (mặc định: chi nhánh của người thao tác) và ghi thẻ kho.
+    FR-STK-06: trừ tồn bằng một câu UPDATE có điều kiện stock >= số cần trừ rồi kiểm tra số dòng bị ảnh hưởng,
     không đọc tồn rồi mới ghi lại, nên hai quầy cùng bán chiếc cuối cùng thì chỉ một quầy thành công."""
-    stmt = update(Product).where(Product.id == product.id).values(stock=Product.stock + delta)
+    branch = branch_id if branch_id is not None else current_branch(db)
+    stmt = (update(BranchStock).where(BranchStock.product_id == product.id, _same_branch(branch))
+            .values(stock=BranchStock.stock + delta))
     if delta < 0:
-        stmt = stmt.where(Product.stock >= -delta)
+        stmt = stmt.where(BranchStock.stock >= -delta)
     result = db.execute(stmt.execution_options(synchronize_session=False))
     if result.rowcount != 1:
-        current = db.scalar(select(Product.stock).where(Product.id == product.id))
-        raise BusinessError(f"Sản phẩm '{product.name}' không đủ tồn kho (còn {current}, cần {-delta})", "OUT_OF_STOCK",
-                            details={"product_id": product.id, "available": current, "requested": -delta})
-    new_stock = db.scalar(select(Product.stock).where(Product.id == product.id))
+        if delta < 0:
+            current = branch_stock(db, product.id, branch)
+            raise BusinessError(f"Sản phẩm '{product.name}' không đủ tồn kho (còn {current}, cần {-delta})",
+                                "OUT_OF_STOCK", details={"product_id": product.id, "available": current,
+                                                         "requested": -delta})
+        db.add(BranchStock(product_id=product.id, branch_id=branch, stock=delta))  # lần đầu có hàng ở chi nhánh này
+        db.flush()
+    new_stock = branch_stock(db, product.id, branch)
     set_committed_value(product, "stock", new_stock)
     db.add(StockMovement(
         product_id=product.id, change=delta, stock_after=new_stock, type=type_, ref_code=ref,
-        user_id=user.id if user else None, note=note, created_at=at or now(),
+        user_id=user.id if user else None, note=note, created_at=at or now(), branch_id=branch,
     ))
 
 

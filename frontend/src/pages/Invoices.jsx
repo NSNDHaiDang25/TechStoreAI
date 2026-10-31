@@ -6,21 +6,25 @@ import { useAuth } from '../auth.jsx'
 import { INVOICE_STATUS, PAY_VI, daysAgo, fmtDateTime, money, num, today } from '../format.js'
 import Icon from '../ui/Icon.jsx'
 import { Badge, ConfirmDialog, Empty, ErrorBox, Loading, Modal, Pager, useLoad, useToast } from '../ui/kit.jsx'
+import { BranchPicker, useBranchView } from '../ui/BranchView.jsx'
 import { t } from '../i18n.js'
 
-export function InvoiceDetail({ id, onClose, onChanged }) {
+export function InvoiceDetail({ id, onClose, onChanged, branch }) {
   const { user } = useAuth()
   const toast = useToast()
-  const { data: inv, reload } = useLoad(() => api.get(`/invoices/${id}`), [id])
+  const { data: inv, reload } = useLoad(() => api.get(`/invoices/${id}`, { branch }), [id, branch])
   const [dialog, setDialog] = useState(null)
   if (!inv) return <Modal title={t('Hóa đơn')} onClose={onClose}><Loading /></Modal>
   const act = async (fn, msg) => {
     try { await fn(); toast(msg, 'success'); reload(); onChanged?.() } catch (e) { toast(e.message, 'error'); throw e }
   }
   const owner = user.role === 'owner'
+  // Hóa đơn của chi nhánh khác (chi nhánh chính đang xem tổng hợp): chỉ xem
+  const otherBranch = inv.branch_id != null && user.branch_id != null && inv.branch_id !== user.branch_id
   const canCancel = ['draft', 'pending_payment'].includes(inv.status) || (inv.status === 'paid' && !inv.cancel_requested_at)
   return (
-    <Modal title={t('Hóa đơn {0}', [inv.code])} onClose={onClose} size="wide" footer={<>
+    <Modal title={t('Hóa đơn {0}', [inv.code])} onClose={onClose} size="wide" footer={otherBranch
+      ? <span className="muted small">{t('Hóa đơn của {0} · chỉ xem', [inv.branch_name])}</span> : <>
       {inv.status !== 'draft' && <button className="btn" onClick={() => openFile(`/invoices/${inv.id}/pdf`)}><Icon name="printer" />{inv.print_count ? t('In lại') : t('In hóa đơn')}</button>}
       {inv.customer_id && ['paid', 'partially_returned'].includes(inv.status) &&
         <button className="btn" onClick={() => act(() => api.post(`/invoices/${inv.id}/email`, {}), t('Đang gửi email hóa đơn'))}><Icon name="mail" />{t('Gửi email')}</button>}
@@ -34,6 +38,7 @@ export function InvoiceDetail({ id, onClose, onChanged }) {
         <Icon name="trash" />{inv.status === 'paid' && !owner ? t('Yêu cầu hủy') : t('Hủy hóa đơn')}</button>}
     </>}>
       <div className="info-list">
+        {inv.branch_name && <div><span className="muted">{t('Chi nhánh')}</span><span>{inv.branch_name}</span></div>}
         <div><span className="muted">{t('Trạng thái')}</span><span><Badge map={INVOICE_STATUS} value={inv.status} />{inv.cancel_requested_at && inv.status === 'paid' && <span className="badge red">{t('Chờ duyệt hủy')}</span>}</span></div>
         <div><span className="muted">{t('Thời gian lập')}</span><span>{fmtDateTime(inv.created_at)}</span></div>
         <div><span className="muted">{t('Thanh toán lúc')}</span><span>{fmtDateTime(inv.paid_at) || '-'}</span></div>
@@ -83,12 +88,18 @@ export default function Invoices() {
     date_to: fromLink ? '' : today(), cancel_requested: params.get('cancel') === 'requested' })
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState(null)
-  const { data, loading, error, reload } = useLoad(() => api.get('/invoices', { ...f, cancel_requested: f.cancel_requested || '', page, size: 20 }), [JSON.stringify(f), page])
+  const [savedBranch, setBranch, multi] = useBranchView()
+  // Mở từ "Việc cần xử lý" ở Tổng quan: xem việc của chi nhánh mình (chỉ chi nhánh mình xử lý được)
+  const [forceOwn, setForceOwn] = useState(!!fromLink)
+  const branch = forceOwn ? '' : savedBranch
+  const showBranch = multi && branch !== ''
+  const { data, loading, error, reload } = useLoad(() => api.get('/invoices', { ...f, branch, cancel_requested: f.cancel_requested || '', page, size: 20 }), [JSON.stringify(f), page, branch])
   const set = (k) => (e) => { setPage(1); setF({ ...f, [k]: e.target.value }) }
-  const exportFile = (format) => openFile('/reports/export/invoices', { ...f, format, cancel_requested: '' }, `hoa-don-${f.date_from}-${f.date_to}.${format}`)
+  const exportFile = (format) => openFile('/reports/export/invoices', { ...f, branch, format, cancel_requested: '' }, `hoa-don-${f.date_from}-${f.date_to}.${format}`)
   return (
     <div className="card">
       <div className="toolbar">
+        {multi && <BranchPicker value={branch} onChange={(v) => { setPage(1); setForceOwn(false); setBranch(v) }} />}
         <label className="grow">{t('Tìm kiếm')}<input placeholder={t('Mã hóa đơn, tên hoặc SĐT khách')} value={f.q} onChange={set('q')} /></label>
         <label>{t('Trạng thái')}<select value={f.status} onChange={set('status')}>
           <option value="">{t('Tất cả')}</option>{Object.entries(INVOICE_STATUS).map(([k, [v]]) => <option key={k} value={k}>{v}</option>)}
@@ -111,10 +122,10 @@ export default function Invoices() {
         <p className="muted small mt-0">{data.total} {t('hóa đơn · doanh thu đã thanh toán')} {money(data.sum_paid)}{user.role === 'staff' ? t(' · bạn chỉ thấy hóa đơn mình lập') : ''}</p>
         {!data.items.length ? <Empty title={t('Không có hóa đơn phù hợp')} /> : (
           <div className="table-wrap"><table>
-            <thead><tr><th>{t('Mã')}</th><th>{t('Thời gian')}</th><th>{t('Khách hàng')}</th><th>{t('Nhân viên')}</th><th>{t('Thanh toán')}</th><th className="right">{t('Tổng tiền')}</th><th>{t('Trạng thái')}</th></tr></thead>
+            <thead><tr><th>{t('Mã')}</th>{showBranch && <th>{t('Chi nhánh')}</th>}<th>{t('Thời gian')}</th><th>{t('Khách hàng')}</th><th>{t('Nhân viên')}</th><th>{t('Thanh toán')}</th><th className="right">{t('Tổng tiền')}</th><th>{t('Trạng thái')}</th></tr></thead>
             <tbody>{data.items.map((i) => (
               <tr key={i.id} className="clickable" onClick={() => setOpen(i.id)}>
-                <td className="strong">{i.code}</td><td>{fmtDateTime(i.created_at)}</td>
+                <td className="strong">{i.code}</td>{showBranch && <td>{i.branch_name}</td>}<td>{fmtDateTime(i.created_at)}</td>
                 <td>{t(i.customer_name)}{i.customer_phone ? <div className="muted small">{i.customer_phone}</div> : null}</td>
                 <td>{i.user_name}</td><td>{PAY_VI[i.payment_method]}</td><td className="right num strong">{money(i.total)}</td>
                 <td><Badge map={INVOICE_STATUS} value={i.status} />{i.cancel_requested_at && i.status === 'paid' && <span className="badge red">{t('Chờ duyệt hủy')}</span>}</td>
@@ -124,7 +135,7 @@ export default function Invoices() {
         )}
         <Pager page={page} size={20} total={data.total} onPage={setPage} />
       </>)}
-      {open && <InvoiceDetail id={open} onClose={() => setOpen(null)} onChanged={reload} />}
+      {open && <InvoiceDetail id={open} branch={branch} onClose={() => setOpen(null)} onChanged={reload} />}
     </div>
   )
 }

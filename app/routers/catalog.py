@@ -11,10 +11,10 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import settings
 from app.database import get_db
 from app.ai.service import strip_accents
-from app.models import Category, ImportItem, InvoiceItem, Product, ProductSerial, StockMovement, User
+from app.models import BranchStock, Category, ImportItem, InvoiceItem, Product, ProductSerial, StockMovement, User
 from app.schemas import (CategoryIn, CategoryOut, ProductIn, ProductOut, ProductUpdate, SerialUpdateIn,
                          StockAdjustIn)
-from app.security import ALL_STAFF, ANY_ROLE, MANAGERS
+from app.security import ALL_STAFF, ANY_ROLE, CATALOG_EDITORS, MANAGERS
 from app.services import app_settings, audit
 from app.services.inventory import BusinessError, adjust_stock, change_stock
 from app.services.purchasing import clean_serial
@@ -44,7 +44,7 @@ def _category_values(db: Session, data: CategoryIn) -> dict:
 
 
 @router.post("/categories", response_model=CategoryOut, status_code=201)
-def create_category(data: CategoryIn, db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+def create_category(data: CategoryIn, db: Session = Depends(get_db), _: User = Depends(CATALOG_EDITORS)):
     cat = Category(**_category_values(db, data))
     db.add(cat)
     try:
@@ -56,7 +56,7 @@ def create_category(data: CategoryIn, db: Session = Depends(get_db), _: User = D
 
 
 @router.put("/categories/{cat_id}", response_model=CategoryOut)
-def update_category(cat_id: int, data: CategoryIn, db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+def update_category(cat_id: int, data: CategoryIn, db: Session = Depends(get_db), _: User = Depends(CATALOG_EDITORS)):
     cat = db.get(Category, cat_id)
     if cat is None:
         raise HTTPException(404, "Không tìm thấy nhóm hàng")
@@ -71,7 +71,7 @@ def update_category(cat_id: int, data: CategoryIn, db: Session = Depends(get_db)
 
 
 @router.delete("/categories/{cat_id}")
-def delete_category(cat_id: int, db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+def delete_category(cat_id: int, db: Session = Depends(get_db), _: User = Depends(CATALOG_EDITORS)):
     """FR-CAT-03: nhóm đã có sản phẩm thì không xóa được, chỉ ẩn."""
     cat = db.get(Category, cat_id)
     if cat is None:
@@ -224,7 +224,7 @@ def _apply_category_defaults(db: Session, fields: dict) -> None:
 
 
 @router.post("/products", status_code=201)
-def create_product(data: ProductIn, db: Session = Depends(get_db), user: User = Depends(MANAGERS)):
+def create_product(data: ProductIn, db: Session = Depends(get_db), user: User = Depends(CATALOG_EDITORS)):
     fields = data.model_dump(exclude={"stock", "category_name"})
     if data.category_name is not None:
         fields["category_id"] = _category_id_by_name(db, data.category_name)
@@ -250,7 +250,7 @@ def create_product(data: ProductIn, db: Session = Depends(get_db), user: User = 
 
 @router.put("/products/{product_id}")
 def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(get_db),
-                   user: User = Depends(MANAGERS)):
+                   user: User = Depends(CATALOG_EDITORS)):
     p = db.get(Product, product_id)
     if p is None:
         raise HTTPException(404, "Không tìm thấy sản phẩm")
@@ -282,17 +282,24 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
 
 
 @router.delete("/products/{product_id}")
-def delete_product(product_id: int, db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+def delete_product(product_id: int, db: Session = Depends(get_db), _: User = Depends(CATALOG_EDITORS)):
     p = db.get(Product, product_id)
     if p is None:
         raise HTTPException(404, "Không tìm thấy sản phẩm")
-    if (db.scalar(select(func.count(InvoiceItem.id)).where(InvoiceItem.product_id == product_id))
-            or db.scalar(select(func.count(ImportItem.id)).where(ImportItem.product_id == product_id))):
-        # Đã có trong hóa đơn hoặc phiếu nhập: chỉ ngừng kinh doanh để giữ lịch sử chứng từ
+    # Danh mục dùng chung: kiểm tra chứng từ và tồn kho của mọi chi nhánh
+    if (db.scalar(select(func.count(InvoiceItem.id)).where(InvoiceItem.product_id == product_id)
+                  .execution_options(**ALL_BRANCHES))
+            or db.scalar(select(func.count(ImportItem.id)).where(ImportItem.product_id == product_id)
+                         .execution_options(**ALL_BRANCHES))
+            or db.scalar(select(func.count(BranchStock.id)).where(BranchStock.product_id == product_id,
+                                                                  BranchStock.stock != 0)
+                         .execution_options(**ALL_BRANCHES))):
+        # Đã có trong hóa đơn, phiếu nhập hoặc còn tồn ở chi nhánh nào đó: chỉ ngừng kinh doanh để giữ lịch sử
         p.status = "inactive"
         db.commit()
-        return {"ok": True, "message": "Sản phẩm đã có trong hóa đơn hoặc phiếu nhập nên không thể xóa, "
-                                       "đã chuyển sang ngừng kinh doanh"}
+        return {"ok": True, "message": "Sản phẩm đã có trong hóa đơn, phiếu nhập hoặc còn tồn ở chi nhánh nên không "
+                                       "thể xóa, đã chuyển sang ngừng kinh doanh"}
+    db.query(BranchStock).filter(BranchStock.product_id == product_id).delete()
     db.query(StockMovement).filter(StockMovement.product_id == product_id).delete()
     _remove_upload(p.image_url)
     db.delete(p)
@@ -416,7 +423,7 @@ def _remove_upload(url: str | None) -> None:
 
 @router.post("/products/{product_id}/image")
 def upload_product_image(product_id: int, file: UploadFile = File(...), db: Session = Depends(get_db),
-                         user: User = Depends(MANAGERS)):
+                         user: User = Depends(CATALOG_EDITORS)):
     p = db.get(Product, product_id)
     if p is None:
         raise HTTPException(404, "Không tìm thấy sản phẩm")
@@ -444,7 +451,7 @@ def upload_product_image(product_id: int, file: UploadFile = File(...), db: Sess
 
 
 @router.delete("/products/{product_id}/image")
-def delete_product_image(product_id: int, db: Session = Depends(get_db), user: User = Depends(MANAGERS)):
+def delete_product_image(product_id: int, db: Session = Depends(get_db), user: User = Depends(CATALOG_EDITORS)):
     p = db.get(Product, product_id)
     if p is None:
         raise HTTPException(404, "Không tìm thấy sản phẩm")

@@ -6,13 +6,13 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import RevokedToken, User, now
+from app.models import Branch, RevokedToken, User, now
 from app.services import branch_scope
 
 ALGORITHM = "HS256"
@@ -130,3 +130,40 @@ MANAGERS = require_roles("owner")
 ADMIN_ONLY = require_roles("admin")
 ADMIN_OR_OWNER = require_roles("admin", "owner")
 ANY_ROLE = require_roles("admin", "owner", "staff")
+
+
+def branch_view(base):
+    """Thêm tham số ?branch= cho API xem số liệu: trống = chi nhánh của mình; "all" = mọi chi nhánh;
+    số = một chi nhánh. Chỉ chủ cửa hàng của chi nhánh chính được xem ngoài chi nhánh mình (chỉ đọc)."""
+    def checker(branch: str | None = Query(None, description="all | id chi nhánh (chỉ chi nhánh chính)"),
+                user: User = Depends(base), db: Session = Depends(get_db)) -> User:
+        if branch in (None, "", "own") or branch == str(user.branch_id):
+            return user
+        if user.role != "owner" or not user.branch_is_main:
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "Chỉ chủ cửa hàng của chi nhánh chính được xem số liệu các chi nhánh khác")
+        if branch == "all":
+            branch_scope.view_branches(db, None)
+            return user
+        if not branch.isdigit() or db.get(Branch, int(branch)) is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy chi nhánh")
+        branch_scope.view_branches(db, int(branch))
+        return user
+    return checker
+
+
+CATALOG_MAIN_ONLY = "Sản phẩm, nhóm hàng và nhà cung cấp dùng chung cho mọi chi nhánh, chỉ chi nhánh chính được thêm, sửa, xóa"
+
+
+def _catalog_editor(user: User = Depends(MANAGERS)) -> User:
+    """Sản phẩm, nhóm hàng, nhà cung cấp dùng chung: chỉ chủ cửa hàng chi nhánh chính thêm / sửa / xóa."""
+    if not user.branch_is_main:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, CATALOG_MAIN_ONLY)
+    return user
+
+
+CATALOG_EDITORS = _catalog_editor
+
+# Xem số liệu kèm ?branch= (chi nhánh chính tổng hợp mọi chi nhánh)
+MANAGERS_VIEW = branch_view(MANAGERS)
+ALL_STAFF_VIEW = branch_view(ALL_STAFF)

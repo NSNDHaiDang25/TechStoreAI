@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 import { useAuth } from '../auth.jsx'
+import { BranchPicker, useBranchView } from '../ui/BranchView.jsx'
 import { PO_STATUS, daysAgo, fmtDateTime, money, num, today } from '../format.js'
 import Icon from '../ui/Icon.jsx'
 import { Badge, ConfirmDialog, Empty, ErrorBox, Loading, Modal, MoneyInput, Pager, useLoad, useToast } from '../ui/kit.jsx'
@@ -92,17 +93,20 @@ function POForm({ initial, onClose, onSaved }) {
   )
 }
 
-function PODetail({ id, onClose, onChanged }) {
+function PODetail({ id, onClose, onChanged, branch }) {
   const { user } = useAuth()
   const owner = user.role === 'owner'
   const toast = useToast()
-  const { data: po, reload } = useLoad(() => api.get(`/purchase-orders/${id}`), [id])
+  const { data: po, reload } = useLoad(() => api.get(`/purchase-orders/${id}`, { branch }), [id, branch])
   const [dialog, setDialog] = useState(null)
   if (!po) return <Modal title={t('Phiếu nhập')} onClose={onClose}><Loading /></Modal>
   const act = async (fn, msg) => { try { await fn(); toast(msg, 'success'); reload(); onChanged() } catch (e) { toast(e.message, 'error'); throw e } }
   const mine = po.user_id === user.id
+  // Phiếu nhập của chi nhánh khác (chi nhánh chính đang xem tổng hợp): chỉ xem
+  const otherBranch = po.branch_id != null && user.branch_id != null && po.branch_id !== user.branch_id
   return (
-    <Modal title={t('Phiếu nhập {0}', [po.code])} onClose={onClose} size="wide" footer={<>
+    <Modal title={t('Phiếu nhập {0}', [po.code])} onClose={onClose} size="wide" footer={otherBranch
+      ? <span className="muted small">{t('Phiếu nhập của {0} · chỉ xem', [po.branch_name])}</span> : <>
       {po.status === 'draft' && (owner || mine) && <>
         <button className="btn danger" onClick={() => act(() => api.del(`/purchase-orders/${po.id}`), t('Đã xóa phiếu nháp')).then(onClose)}><Icon name="trash" />{t('Xóa nháp')}</button>
         <button className="btn" onClick={() => setDialog('edit')}><Icon name="edit" />{t('Sửa')}</button>
@@ -111,11 +115,13 @@ function PODetail({ id, onClose, onChanged }) {
       {owner && po.status === 'confirmed' && <button className="btn danger" onClick={() => setDialog('cancel')}>{t('Hủy phiếu')}</button>}
     </>}>
       <div className="info-list">
+        {po.branch_name && <div><span className="muted">{t('Chi nhánh nhập')}</span><span className="strong">{po.branch_name}</span></div>}
         <div><span className="muted">{t('Trạng thái')}</span><span><Badge map={PO_STATUS} value={po.status} /></span></div>
         <div><span className="muted">{t('Nhà cung cấp')}</span><span>{po.supplier || '-'}</span></div>
         <div><span className="muted">{t('Người lập')}</span><span>{po.user_name}</span></div>
         <div><span className="muted">{t('Ngày lập')}</span><span>{fmtDateTime(po.created_at)}</span></div>
         <div><span className="muted">{t('Nhập kho lúc')}</span><span>{fmtDateTime(po.received_at) || '-'}</span></div>
+        {po.confirmed_by_name && <div><span className="muted">{t('Người xác nhận nhập kho')}</span><span>{po.confirmed_by_name}</span></div>}
         {po.cancel_reason && <div><span className="muted">{t('Lý do hủy')}</span><span>{po.cancel_reason}</span></div>}
       </div>
       <div className="table-wrap"><table>
@@ -140,7 +146,9 @@ export default function PurchaseOrders() {
   const [f, setF] = useState({ status: '', q: '', date_from: daysAgo(89), date_to: today() })
   const [page, setPage] = useState(1)
   const [dialog, setDialog] = useState(null)
-  const { data, loading, error, reload } = useLoad(() => api.get('/purchase-orders', { ...f, page, size: 20 }), [JSON.stringify(f), page])
+  const [branch, setBranch, multi] = useBranchView()
+  const showBranch = multi && branch !== ''
+  const { data, loading, error, reload } = useLoad(() => api.get('/purchase-orders', { ...f, branch, page, size: 20 }), [JSON.stringify(f), page, branch])
   const set = (k) => (e) => { setPage(1); setF({ ...f, [k]: e.target.value }) }
   // Mở "Nhập hàng nhanh" khi đến từ Tổng quan, Tồn kho hoặc chuông thông báo hàng sắp hết
   const loc = useLocation()
@@ -153,6 +161,7 @@ export default function PurchaseOrders() {
   return (
     <div className="card">
       <div className="toolbar">
+        {multi && <BranchPicker value={branch} onChange={(v) => { setPage(1); setBranch(v) }} />}
         <label className="grow">{t('Tìm')}<input value={f.q} onChange={set('q')} placeholder={t('Mã phiếu, nhà cung cấp')} /></label>
         <label>{t('Trạng thái')}<select value={f.status} onChange={set('status')}><option value="">{t('Tất cả')}</option>
           {Object.entries(PO_STATUS).map(([k, [v]]) => <option key={k} value={k}>{v}{data?.counts?.[k] ? ` (${data.counts[k]})` : ''}</option>)}</select></label>
@@ -163,10 +172,11 @@ export default function PurchaseOrders() {
       <ErrorBox error={error} />
       {loading && !data ? <Loading /> : data && (!data.items.length ? <Empty title={t('Chưa có phiếu nhập')} /> : <>
         <div className="table-wrap"><table>
-          <thead><tr><th>{t('Mã phiếu')}</th><th>{t('Ngày lập')}</th><th>{t('Nhà cung cấp')}</th><th>{t('Người lập')}</th><th className="right">{t('Số lượng')}</th>{user.role !== 'staff' && <th className="right">{t('Tổng tiền')}</th>}<th>{t('Trạng thái')}</th></tr></thead>
+          <thead><tr><th>{t('Mã phiếu')}</th>{showBranch && <th>{t('Chi nhánh')}</th>}<th>{t('Ngày lập')}</th><th>{t('Nhà cung cấp')}</th><th>{t('Người lập / nhập kho')}</th><th className="right">{t('Số lượng')}</th>{user.role !== 'staff' && <th className="right">{t('Tổng tiền')}</th>}<th>{t('Trạng thái')}</th></tr></thead>
           <tbody>{data.items.map((o) => (
             <tr key={o.id} className="clickable" onClick={() => setDialog({ type: 'detail', id: o.id })}>
-              <td className="strong">{o.code}</td><td>{fmtDateTime(o.created_at)}</td><td>{o.supplier || '-'}</td><td>{o.user_name}</td>
+              <td className="strong">{o.code}</td>{showBranch && <td>{o.branch_name}</td>}<td>{fmtDateTime(o.created_at)}</td><td>{o.supplier || '-'}</td>
+              <td>{o.user_name}{o.confirmed_by_name && o.confirmed_by_name !== o.user_name && <div className="muted small">{t('Nhập kho: {0}', [o.confirmed_by_name])}</div>}</td>
               <td className="right">{num(o.quantity)}</td>{user.role !== 'staff' && <td className="right num">{money(o.total)}</td>}
               <td><Badge map={PO_STATUS} value={o.status} /></td>
             </tr>
@@ -176,7 +186,7 @@ export default function PurchaseOrders() {
       </>)}
       {dialog?.type === 'new' && <POForm onClose={() => setDialog(null)} onSaved={() => { setDialog(null); reload() }} />}
       {dialog?.type === 'restock' && <QuickRestock onClose={() => setDialog(null)} onDone={reload} />}
-      {dialog?.type === 'detail' && <PODetail id={dialog.id} onClose={() => setDialog(null)} onChanged={reload} />}
+      {dialog?.type === 'detail' && <PODetail id={dialog.id} branch={branch} onClose={() => setDialog(null)} onChanged={reload} />}
     </div>
   )
 }

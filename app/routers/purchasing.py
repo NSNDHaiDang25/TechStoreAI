@@ -5,10 +5,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db, lock_for_write
-from app.models import ImportItem, ImportReceipt, Supplier, User
+from app.models import AuditLog, Branch, ImportItem, ImportReceipt, Supplier, User
 from app.schemas import CancelIn, PurchaseOrderIn, QuickRestockIn, SupplierIn
-from app.security import ALL_STAFF, MANAGERS
+from app.security import ALL_STAFF, ALL_STAFF_VIEW, CATALOG_EDITORS, MANAGERS
 from app.services import purchasing, restock
+from app.services.branch_scope import ALL_BRANCHES
 from app.services.inventory import BusinessError
 from app.services.reports import parse_range
 
@@ -57,7 +58,7 @@ def get_supplier(supplier_id: int, db: Session = Depends(get_db), user: User = D
 
 
 @router.post("/suppliers", status_code=201)
-def create_supplier(data: SupplierIn, db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+def create_supplier(data: SupplierIn, db: Session = Depends(get_db), _: User = Depends(CATALOG_EDITORS)):
     s = Supplier(**data.model_dump(exclude={"code"}), code=data.code or purchasing.next_supplier_code(db))
     db.add(s)
     try:
@@ -69,7 +70,7 @@ def create_supplier(data: SupplierIn, db: Session = Depends(get_db), _: User = D
 
 
 @router.put("/suppliers/{supplier_id}")
-def update_supplier(supplier_id: int, data: SupplierIn, db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+def update_supplier(supplier_id: int, data: SupplierIn, db: Session = Depends(get_db), _: User = Depends(CATALOG_EDITORS)):
     s = db.get(Supplier, supplier_id)
     if s is None:
         raise HTTPException(404, "Không tìm thấy nhà cung cấp")
@@ -84,21 +85,43 @@ def update_supplier(supplier_id: int, data: SupplierIn, db: Session = Depends(ge
 
 
 @router.delete("/suppliers/{supplier_id}")
-def delete_supplier(supplier_id: int, db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+def delete_supplier(supplier_id: int, db: Session = Depends(get_db), _: User = Depends(CATALOG_EDITORS)):
     """FR-SUP-03: nhà cung cấp đã có phiếu nhập thì không xóa, chỉ chuyển sang ngừng hợp tác."""
     s = db.get(Supplier, supplier_id)
     if s is None:
         raise HTTPException(404, "Không tìm thấy nhà cung cấp")
-    if db.scalar(select(func.count(ImportReceipt.id)).where(ImportReceipt.supplier_id == supplier_id)):
+    # Nhà cung cấp dùng chung: tính phiếu nhập của mọi chi nhánh
+    if db.scalar(select(func.count(ImportReceipt.id)).where(ImportReceipt.supplier_id == supplier_id)
+                 .execution_options(**ALL_BRANCHES)):
         s.status = "inactive"
         db.commit()
-        return {"ok": True, "message": "Nhà cung cấp đã có phiếu nhập nên không xóa được, đã chuyển sang ngừng hợp tác"}
+        return {"ok": True, "message": "Nhà cung cấp đã có phiếu nhập (ở chi nhánh nào đó) nên không xóa được, "
+                                       "đã chuyển sang ngừng hợp tác"}
     db.delete(s)
     db.commit()
     return {"ok": True, "message": "Đã xóa nhà cung cấp"}
 
 
 # ---------------------------------------------------------------- Phiếu nhập
+def _who_confirmed(db: Session, ids: list[int]) -> dict[int, str]:
+    """Người xác nhận nhập kho của từng phiếu (lấy từ nhật ký thao tác PURCHASE_CONFIRM, lần gần nhất)."""
+    if not ids:
+        return {}
+    rows = db.execute(select(AuditLog.entity_id, User.full_name).join(User, User.id == AuditLog.user_id)
+                      .where(AuditLog.action == "PURCHASE_CONFIRM", AuditLog.entity == "import_receipts",
+                             AuditLog.entity_id.in_(ids)).order_by(AuditLog.id)).all()
+    return dict(rows)  # id lớn hơn ghi đè: lần xác nhận gần nhất
+
+
+def _extras(db: Session, rows: list[ImportReceipt]) -> dict[int, dict]:
+    """Chi nhánh nhập hàng và người xác nhận nhập kho (chi nhánh chính xem phiếu nhập của mọi chi nhánh)."""
+    names = dict(db.execute(select(Branch.id, Branch.name)).all())
+    confirmed = _who_confirmed(db, [r.id for r in rows])
+    return {r.id: {"branch_id": r.branch_id, "branch_name": names.get(r.branch_id),
+                   "confirmed_by_name": confirmed.get(r.id) or (r.user.full_name if r.status != "draft" else None)}
+            for r in rows}
+
+
 def po_out(po: ImportReceipt, user: User, with_items: bool = True) -> dict:
     hide = user.role == "staff"  # FR-PUR-08: nhân viên không thấy giá nhập
     data = {"id": po.id, "code": po.code, "supplier_id": po.supplier_id, "supplier": po.supplier,
@@ -142,7 +165,8 @@ def list_purchase_orders(status: str | None = Query(None, pattern="^(draft|confi
                          supplier_id: int | None = None, q: str | None = None,
                          date_from: str | None = None, date_to: str | None = None,
                          page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=200),
-                         db: Session = Depends(get_db), user: User = Depends(ALL_STAFF)):
+                         db: Session = Depends(get_db), user: User = Depends(ALL_STAFF_VIEW)):
+    """?branch=all | id: chi nhánh chính xem phiếu nhập của mọi chi nhánh / một chi nhánh (chỉ xem)."""
     stmt = select(ImportReceipt)
     if status:
         stmt = stmt.where(ImportReceipt.status == status)
@@ -160,7 +184,8 @@ def list_purchase_orders(status: str | None = Query(None, pattern="^(draft|confi
                       .offset((page - 1) * size).limit(size)).unique().all()
     counts = dict(db.execute(select(ImportReceipt.status, func.count(ImportReceipt.id))
                              .group_by(ImportReceipt.status)).all())
-    return {"total": total, "counts": counts, "items": [po_out(r, user, False) for r in rows]}
+    extras = _extras(db, rows)
+    return {"total": total, "counts": counts, "items": [{**po_out(r, user, False), **extras[r.id]} for r in rows]}
 
 
 @router.get("/purchase-orders/restock-suggestions")
@@ -175,8 +200,9 @@ def quick_restock(data: QuickRestockIn, db: Session = Depends(get_db), user: Use
 
 
 @router.get("/purchase-orders/{po_id}")
-def get_purchase_order(po_id: int, db: Session = Depends(get_db), user: User = Depends(ALL_STAFF)):
-    return po_out(_load(db, po_id), user)
+def get_purchase_order(po_id: int, db: Session = Depends(get_db), user: User = Depends(ALL_STAFF_VIEW)):
+    po = _load(db, po_id)
+    return {**po_out(po, user), **_extras(db, [po])[po.id]}
 
 
 @router.post("/purchase-orders", status_code=201)

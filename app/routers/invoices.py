@@ -6,10 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db, lock_for_write
-from app.models import (PAID_STATES, Customer, ImportReceipt, Invoice, InvoiceItem, Return, User, Warranty)
+from app.models import (PAID_STATES, Branch, Customer, ImportReceipt, Invoice, InvoiceItem, Return, User, Warranty)
 from app.schemas import (CancelDecisionIn, ConfirmPaymentIn, EmailInvoiceIn, ImportIn, InvoiceCancelIn, InvoiceIn)
-from app.security import ALL_STAFF, MANAGERS
-from app.services import app_settings, audit, inventory, receipts, sales
+from app.security import ALL_STAFF, ALL_STAFF_VIEW, MANAGERS
+from app.services import app_settings, audit, branch_scope, inventory, receipts, sales
 from app.services.inventory import BusinessError
 from app.services.mailer import MailError, mail_configured, send_logged
 from app.services.qr import qr_svg, vietqr_payload
@@ -29,7 +29,7 @@ def mask_phone(phone: str | None) -> str | None:
 def invoice_out(inv: Invoice, with_items: bool = True, db: Session | None = None, user: User | None = None) -> dict:
     hide_cost = user is not None and user.role == "staff"
     data = {
-        "id": inv.id, "code": inv.code, "customer_id": inv.customer_id,
+        "id": inv.id, "code": inv.code, "branch_id": inv.branch_id, "customer_id": inv.customer_id,
         "customer_name": inv.customer.name if inv.customer else "Khách lẻ",
         "customer_phone": inv.customer.phone if (inv.customer and with_items) else
         (mask_phone(inv.customer.phone) if inv.customer else None),
@@ -92,8 +92,13 @@ def invoice_query(user: User, q: str | None, status: str | None, date_from: str 
 
 
 def _expire(db: Session) -> None:
-    if sales.expire_pending(db):
+    # Chi nhánh chính đang xem chi nhánh khác: chỉ đọc, việc hủy hóa đơn quá hạn để vòng chạy nền làm
+    if not branch_scope.viewing_other(db) and sales.expire_pending(db):
         db.commit()
+
+
+def _branch_names(db: Session) -> dict[int, str]:
+    return dict(db.execute(select(Branch.id, Branch.name)).all())
 
 
 @router.get("/invoices")
@@ -102,7 +107,7 @@ def list_invoices(q: str | None = None, status: str | None = Query(None, pattern
                   payment_method: str | None = None, customer_id: int | None = None,
                   cashier_id: int | None = None, cancel_requested: bool = False,
                   page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=200),
-                  db: Session = Depends(get_db), user: User = Depends(ALL_STAFF)):
+                  db: Session = Depends(get_db), user: User = Depends(ALL_STAFF_VIEW)):
     """FR-SAL-13: tìm và lọc theo mã, khách, ngày, trạng thái, phương thức thanh toán, nhân viên."""
     _expire(db)
     stmt = invoice_query(user, q, status, date_from, date_to, payment_method, customer_id, cashier_id)
@@ -116,8 +121,9 @@ def list_invoices(q: str | None = None, status: str | None = Query(None, pattern
                       .offset((page - 1) * size).limit(size)).unique().all()
     pending_cancel = db.scalar(select(func.count(Invoice.id)).where(
         Invoice.cancel_requested_at.is_not(None), Invoice.status == "paid")) if user.role != "staff" else None
+    names = _branch_names(db)
     return {"total": total, "sum_paid": int(sum_total), "cancel_requests": pending_cancel,
-            "items": [invoice_out(i, False) for i in rows]}
+            "items": [{**invoice_out(i, False), "branch_name": names.get(i.branch_id)} for i in rows]}
 
 
 def _get_invoice(db: Session, invoice_id: int, user: User) -> Invoice:
@@ -141,10 +147,11 @@ def _out(db: Session, invoice_id: int, user: User, cart=None) -> dict:
 
 
 @router.get("/invoices/{invoice_id}")
-def get_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(ALL_STAFF)):
+def get_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(ALL_STAFF_VIEW)):
     _expire(db)
     inv = _get_invoice(db, invoice_id, user)
     data = invoice_out(inv, db=db, user=user)
+    data["branch_name"] = _branch_names(db).get(inv.branch_id)
     data["returns"] = [{"id": r.id, "code": r.code, "refund_amount": r.refund_amount, "created_at": r.created_at}
                        for r in db.scalars(select(Return).where(Return.invoice_id == inv.id))]
     return data

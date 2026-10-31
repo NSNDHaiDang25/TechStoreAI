@@ -21,7 +21,7 @@ from app.database import get_db
 from app.models import Category, Product, User
 from app.routers.catalog import _apply_category_defaults
 from app.schemas import ProductIn
-from app.security import MANAGERS
+from app.security import CATALOG_EDITORS, MANAGERS
 from app.services import audit
 from app.services.export import MEDIA, to_csv
 from app.services.branch_scope import ALL_BRANCHES
@@ -274,7 +274,7 @@ def parse_table(table: list[list[str]]) -> tuple[list[dict], list[dict]]:
 
 @router.post("/products/import")
 async def import_products(file: UploadFile = File(...), dry_run: bool = Query(False),
-                          db: Session = Depends(get_db), user: User = Depends(MANAGERS)):
+                          db: Session = Depends(get_db), user: User = Depends(CATALOG_EDITORS)):
     data = await file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise HTTPException(400, "Tệp quá 5 MB")

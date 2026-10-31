@@ -1,15 +1,15 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import PAID_STATES, Invoice, Product, User, now
+from app.models import PAID_STATES, Branch, Invoice, Product, User, now
 from app.routers.invoices import invoice_query
-from app.security import ALL_STAFF, MANAGERS
-from app.services import export, reports
+from app.security import ALL_STAFF_VIEW, MANAGERS_VIEW
+from app.services import branch_scope, export, reports
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 STATUS_VI = {"draft": "Nháp", "pending_payment": "Chờ thanh toán", "paid": "Đã thanh toán",
@@ -33,17 +33,40 @@ def _with_images(db: Session, rows: list[dict]) -> list[dict]:
     return [{**r, "image_url": urls.get(r["code"])} for r in rows]
 
 
+def _by_branch(db: Session, start: datetime, end: datetime) -> list[dict]:
+    """Doanh thu từng chi nhánh khi chi nhánh chính xem mọi chi nhánh (kể cả chi nhánh chưa bán được gì)."""
+    if not branch_scope.viewing_all(db):
+        return []
+    rows = reports.revenue_by_branch(db, start, end)
+    seen = {r["branch_id"] for r in rows}
+    zero = {"invoice_count": 0, "gross_sales": 0, "refunds": 0, "vat": 0, "cost": 0, "revenue": 0,
+            "revenue_net": 0, "gross_profit": 0}
+    rows += [{"branch_id": b.id, "branch_name": b.name, **zero}
+             for b in db.scalars(select(Branch).where(Branch.is_active.is_(True)).order_by(Branch.id)) if b.id not in seen]
+    return rows
+
+
 @router.get("/dashboard")
-def dashboard(db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+def dashboard(db: Session = Depends(get_db), user: User = Depends(MANAGERS_VIEW)):
     d = reports.dashboard(db)
+    if branch_scope.viewing_other(db):
+        # "Việc cần xử lý" luôn là việc của chi nhánh mình: hóa đơn chi nhánh khác chỉ xem, không xử lý được
+        own = Invoice.branch_id == user.branch_id
+        d["pending_payment"] = db.scalar(select(func.count(Invoice.id)).where(
+            own, Invoice.status == "pending_payment").execution_options(**branch_scope.ALL_BRANCHES))
+        d["cancel_requests"] = db.scalar(select(func.count(Invoice.id)).where(
+            own, Invoice.cancel_requested_at.is_not(None), Invoice.status == "paid")
+            .execution_options(**branch_scope.ALL_BRANCHES))
     d["top_products_30"] = _with_images(db, d["top_products_30"])
     d["low_stock"] = _with_images(db, d["low_stock"])
+    today = now().date()
+    d["by_branch_month"] = _by_branch(db, datetime(today.year, today.month, 1), reports.parse_range(today, today)[1])
     return d
 
 
 @router.get("/revenue")
 def revenue(date_from: str | None = None, date_to: str | None = None,
-            db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+            db: Session = Depends(get_db), _: User = Depends(MANAGERS_VIEW)):
     start, end = _range(date_from, date_to)
     return {
         "summary": reports.revenue_total(db, start, end),
@@ -51,19 +74,20 @@ def revenue(date_from: str | None = None, date_to: str | None = None,
         "by_category": reports.revenue_by_category(db, start, end),
         "top_products": _with_images(db, reports.top_products(db, start, end, 10)),
         "slow_products": _with_images(db, reports.slow_products(db, start, end, 10)),
+        "by_branch": _by_branch(db, start, end),
     }
 
 
 @router.get("/monthly")
 def monthly(year: int = Query(default_factory=lambda: now().year, ge=2000, le=2100),
-            db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+            db: Session = Depends(get_db), _: User = Depends(MANAGERS_VIEW)):
     return reports.revenue_by_month(db, year)
 
 
 @router.get("/top-products")
 def top_products(date_from: str | None = None, date_to: str | None = None,
                  by: str = Query("quantity", pattern="^(quantity|revenue)$"), limit: int = Query(10, ge=1, le=100),
-                 db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+                 db: Session = Depends(get_db), _: User = Depends(MANAGERS_VIEW)):
     start, end = _range(date_from, date_to)
     return {"top": _with_images(db, reports.top_products(db, start, end, limit, by)),
             "slow": _with_images(db, reports.slow_products(db, start, end, limit)),
@@ -71,12 +95,12 @@ def top_products(date_from: str | None = None, date_to: str | None = None,
 
 
 @router.get("/inventory")
-def inventory_report(db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+def inventory_report(db: Session = Depends(get_db), _: User = Depends(MANAGERS_VIEW)):
     return reports.inventory_report(db)
 
 
 @router.get("/low-stock")
-def low_stock(db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+def low_stock(db: Session = Depends(get_db), _: User = Depends(MANAGERS_VIEW)):
     return _with_images(db, reports.low_stock(db))
 
 
@@ -88,7 +112,7 @@ def _file(content: bytes, fmt: str, name: str) -> Response:
 @router.get("/export/revenue")
 def export_revenue(format: str = Query("xlsx", pattern="^(csv|xlsx|pdf)$"),
                    date_from: str | None = None, date_to: str | None = None,
-                   db: Session = Depends(get_db), _: User = Depends(MANAGERS)):
+                   db: Session = Depends(get_db), _: User = Depends(MANAGERS_VIEW)):
     start, end = _range(date_from, date_to)
     s = reports.revenue_total(db, start, end)
     by_day = reports.revenue_by_day(db, start, end)
@@ -98,7 +122,13 @@ def export_revenue(format: str = Query("xlsx", pattern="^(csv|xlsx|pdf)$"),
     day_rows = [[d["date"], d["invoice_count"], d["revenue"]] for d in by_day]
     cat_rows = [[c["category"], c["quantity"], c["revenue"]] for c in by_cat]
     top_rows = [[p["code"], p["name"], p["quantity"], p["revenue"]] for p in top]
+    branch_rows = [[b["branch_name"], b["invoice_count"], b["revenue"], b["gross_profit"]]
+                   for b in _by_branch(db, start, end)]
+    branch_head = ["Chi nhánh", "Số hóa đơn", "Doanh thu", "Lãi gộp"]
     name = f"bao_cao_doanh_thu_{start.date()}_{end.date()}"
+    if branch_rows:
+        name += "_tat_ca_chi_nhanh"
+        period += " - tất cả chi nhánh"
 
     if format == "csv":
         return _file(export.to_csv(["Ngày", "Số hóa đơn", "Doanh thu"], day_rows), "csv", name)
@@ -112,7 +142,7 @@ def export_revenue(format: str = Query("xlsx", pattern="^(csv|xlsx|pdf)$"),
             ("Theo ngày", ["Ngày", "Số hóa đơn", "Doanh thu"], day_rows),
             ("Theo nhóm hàng", ["Nhóm hàng", "Số lượng", "Doanh thu"], cat_rows),
             ("Bán chạy", ["Mã", "Sản phẩm", "Số lượng", "Doanh thu"], top_rows),
-        ]), "xlsx", name)
+        ] + ([("Theo chi nhánh", branch_head, branch_rows)] if branch_rows else [])), "xlsx", name)
     v = export.vnd
     return _file(export.to_pdf(
         "BÁO CÁO DOANH THU", f"Kỳ: {period}",
@@ -121,6 +151,8 @@ def export_revenue(format: str = Query("xlsx", pattern="^(csv|xlsx|pdf)$"),
                 ["Số hóa đơn", s["invoice_count"]], ["Doanh thu (gồm VAT)", v(s["revenue"])],
                 ["Tiền hoàn đổi trả", v(s["refunds"])], ["Doanh thu chưa VAT", v(s["revenue_net"])],
                 ["Giá vốn", v(s["cost"])], ["Lãi gộp", v(s["gross_profit"])]], [1, 1]),
+        ] + ([("Doanh thu theo chi nhánh", branch_head, [[r[0], r[1], v(r[2]), v(r[3])] for r in branch_rows],
+               [3, 1, 2, 2])] if branch_rows else []) + [
             ("Doanh thu theo nhóm hàng", ["Nhóm hàng", "Số lượng", "Doanh thu"],
              [[r[0], r[1], v(r[2])] for r in cat_rows], [3, 1, 2]),
             ("Top sản phẩm bán chạy", ["Mã", "Sản phẩm", "SL", "Doanh thu"],
@@ -135,7 +167,7 @@ def export_revenue(format: str = Query("xlsx", pattern="^(csv|xlsx|pdf)$"),
 def export_invoices(format: str = Query("xlsx", pattern="^(csv|xlsx|pdf)$"),
                     q: str | None = None, status: str | None = None, payment_method: str | None = None,
                     date_from: str | None = None, date_to: str | None = None,
-                    db: Session = Depends(get_db), user: User = Depends(ALL_STAFF)):
+                    db: Session = Depends(get_db), user: User = Depends(ALL_STAFF_VIEW)):
     """FR-EXP-01..04: xuất theo đúng bộ lọc đang áp dụng; nhân viên chỉ xuất hóa đơn do mình lập."""
     _range(date_from, date_to)
     stmt = invoice_query(user, q, status, date_from, date_to, payment_method, None)
@@ -146,6 +178,11 @@ def export_invoices(format: str = Query("xlsx", pattern="^(csv|xlsx|pdf)$"),
     rows = [[i.code, i.created_at.strftime("%Y-%m-%d %H:%M"), i.customer.name if i.customer else "Khách lẻ",
              i.user.full_name, i.subtotal, i.discount, i.total, PAY_VI.get(i.payment_method, i.payment_method),
              STATUS_VI.get(i.status, i.status)] for i in invoices]
+    if branch_scope.viewing_other(db):  # chi nhánh chính xuất hóa đơn chi nhánh khác: thêm cột chi nhánh
+        names = dict(db.execute(select(Branch.id, Branch.name)).all())
+        headers.append("Chi nhánh")
+        for i, r in zip(invoices, rows):
+            r.append(names.get(i.branch_id, ""))
     name = f"danh_sach_hoa_don_{date_from or 'tat-ca'}_{date_to or now().date()}"
     if format == "csv":
         return _file(export.to_csv(headers, rows), "csv", name)

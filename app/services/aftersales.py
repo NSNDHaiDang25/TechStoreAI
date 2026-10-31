@@ -88,7 +88,7 @@ def create_return(db: Session, data: ReturnIn, user: User) -> Return:
         restock = req.item_condition == "sellable"  # BR-33
         if restock:
             change_stock(db, products[it.product_id], req.quantity, "return", ret.code, user,
-                         note=f"Khách trả hàng {inv.code}")
+                         note=f"Khách trả hàng {inv.code}", branch_id=inv.branch_id)
         if serial is not None:
             serial.status = "in_stock" if restock else "defective"
             serial.invoice_item_id = None if restock else serial.invoice_item_id

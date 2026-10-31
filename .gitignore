@@ -16,6 +16,7 @@ data/models/
 
 .pytest_cache/
 data/*.bak*
+data/backup-*/
 frontend/dist/
 *.log
 

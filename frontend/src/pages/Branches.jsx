@@ -10,7 +10,8 @@ import { t } from '../i18n.js'
 
 function BranchForm({ initial, onClose, onSaved }) {
   const toast = useToast()
-  const [f, setF] = useState({ name: initial?.name || '', address: initial?.address || '', is_active: initial ? initial.is_active : true })
+  const [f, setF] = useState({ name: initial?.name || '', address: initial?.address || '', is_active: initial ? initial.is_active : true,
+    is_main: !!initial?.is_main })
   const [busy, setBusy] = useState(false)
   const save = async () => {
     setBusy(true)
@@ -28,6 +29,9 @@ function BranchForm({ initial, onClose, onSaved }) {
         <Field label={t('Địa chỉ')}><input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
         {initial && <Field label={t('Trạng thái')}><select value={f.is_active ? '1' : '0'} onChange={(e) => setF({ ...f, is_active: e.target.value === '1' })}>
           <option value="1">{t('Đang hoạt động')}</option><option value="0">{t('Ngừng hoạt động')}</option></select></Field>}
+        <label className="checkbox"><input type="checkbox" checked={f.is_main} disabled={!!initial?.is_main}
+          onChange={(e) => setF({ ...f, is_main: e.target.checked })} />{t('Chi nhánh chính: chủ cửa hàng ở đây xem được hóa đơn, doanh thu, báo cáo của mọi chi nhánh')}</label>
+        {initial?.is_main && <p className="muted small m-0">{t('Muốn đổi chi nhánh chính, hãy mở chi nhánh khác và đánh dấu chi nhánh đó.')}</p>}
       </div>
     </Modal>
   )
@@ -60,6 +64,7 @@ function BranchDetail({ id, onClose, onEdit, onChanged }) {
       {!data ? <Loading /> : <div className="stack">
         <div className="branch-meta">
           <span className="muted">{data.address || t('Chưa có địa chỉ')}</span>
+          {data.is_main && <span className="badge blue">{t('Chi nhánh chính')}</span>}
           {data.is_active ? <span className="badge green">{t('Hoạt động')}</span> : <span className="badge">{t('Ngừng hoạt động')}</span>}
         </div>
         <div className="branch-stats">
@@ -97,7 +102,8 @@ export default function Branches() {
     <div className="card">
       <div className="card-head"><h2><Icon name="store" />{t('Chi nhánh')}</h2>
         <button className="btn primary" onClick={() => setDialog({ form: {} })}><Icon name="plus" />{t('Thêm chi nhánh')}</button></div>
-      <p className="muted mt-0">{t('Mỗi chi nhánh độc lập: sản phẩm, kho, hóa đơn, khách hàng, khuyến mãi, báo cáo và cấu hình cửa hàng riêng. Chủ cửa hàng và nhân viên chỉ thấy dữ liệu chi nhánh của mình.')}</p>
+      <p className="muted mt-0">{t('Mỗi chi nhánh độc lập: sản phẩm, kho, hóa đơn, khách hàng, khuyến mãi, báo cáo và cấu hình cửa hàng riêng. Chủ cửa hàng và nhân viên chỉ thấy dữ liệu chi nhánh của mình.')}
+        {' '}{t('Riêng chủ cửa hàng của chi nhánh chính xem được hóa đơn, doanh thu, báo cáo của tất cả chi nhánh để quản lý chung.')}</p>
       <ErrorBox error={error} />
       {!data ? <Loading /> : !data.length ? <Empty icon="store" title={t('Chưa có chi nhánh')} /> : (
         <div className="branch-grid">{data.map((b) => (
@@ -105,6 +111,7 @@ export default function Branches() {
             <span className="branch-card-top">
               <span className="branch-icon"><Icon name="store" /></span>
               <span className="branch-name">{b.name}</span>
+              {b.is_main && <span className="badge blue">{t('Chi nhánh chính')}</span>}
               {!b.is_active && <span className="badge">{t('Ngừng hoạt động')}</span>}
             </span>
             <span className="muted small branch-address">{b.address || t('Chưa có địa chỉ')}</span>

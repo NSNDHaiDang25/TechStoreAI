@@ -14,6 +14,7 @@ const TYPES = {
   pending_payment: { icon: 'receipt', tone: 'yellow', to: '/invoices', title: t('Hóa đơn chờ thanh toán'), detail: (n) => t('{0} hóa đơn đang chờ khách chuyển khoản', [n]) },
   cancel_requests: { icon: 'alert', tone: 'red', to: '/invoices', title: t('Yêu cầu hủy hóa đơn'), detail: (n) => t('{0} yêu cầu đang chờ bạn duyệt', [n]) },
   warranty_open: { icon: 'wrench', tone: 'blue', to: '/warranty', title: t('Phiếu bảo hành đang xử lý'), detail: (n) => t('{0} phiếu chưa trả máy cho khách', [n]) },
+  branch_imports: { icon: 'truck', tone: 'blue', to: '/purchase-orders', title: t('Chi nhánh khác vừa nhập hàng'), detail: (n) => t('{0} phiếu nhập kho ở các chi nhánh trong 24 giờ qua', [n]) },
   draft_receipts: { icon: 'truck', tone: 'blue', to: '/purchase-orders', title: t('Phiếu nhập nháp'), detail: (n) => t('{0} phiếu chưa xác nhận nhập kho', [n]) },
   pending_users: { icon: 'users', tone: 'yellow', to: '/users', title: t('Tài khoản chờ duyệt'), detail: (n) => t('{0} người tự đăng ký đang chờ duyệt', [n]) },
   locked_users: { icon: 'lock', tone: 'red', to: '/users', title: t('Tài khoản đang bị khóa'), detail: (n) => t('{0} tài khoản bị khóa do đăng nhập sai nhiều lần', [n]) },

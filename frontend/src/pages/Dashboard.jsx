@@ -7,6 +7,7 @@ import Chart, { seriesChart } from '../ui/Chart.jsx'
 import Icon from '../ui/Icon.jsx'
 import { Empty, ErrorBox, Loading, useLoad } from '../ui/kit.jsx'
 import ProductCell from '../ui/ProductCell.jsx'
+import { BranchPicker, BranchRevenue, useBranchView } from '../ui/BranchView.jsx'
 import { t } from '../i18n.js'
 
 export function Kpi({ icon, label, value, sub, color = '', featured }) {
@@ -21,19 +22,23 @@ export function Kpi({ icon, label, value, sub, color = '', featured }) {
 const dm = (s) => `${s.slice(8)}/${s.slice(5, 7)}`
 
 export default function Dashboard() {
-  const { data: d, error, reload } = useLoad(() => api.get('/reports/dashboard'), [])
+  const [branch, setBranch, multi] = useBranchView()
+  const { data: d, error, reload } = useLoad(() => api.get('/reports/dashboard', { branch }), [branch])
   const build = useMemo(() => d && seriesChart('line', d.daily_30.map((x) => dm(x.date)), d.daily_30.map((x) => x.revenue)), [d])
-  if (error) return <ErrorBox error={error} />
-  if (!d) return <Loading />
+  const picker = multi && <div className="card"><div className="toolbar mb-0"><BranchPicker value={branch} onChange={setBranch} /></div></div>
+  if (error) return <div className="stack">{picker}<ErrorBox error={error} /></div>
+  if (!d) return <div className="stack">{picker}<Loading /></div>
   const margin = d.month.revenue_net ? ((d.month.gross_profit / d.month.revenue_net) * 100).toFixed(1) : null
   return (
     <div className="stack">
+      {picker}
       <div className="grid kpi">
         <Kpi featured icon="wallet" label={t('Doanh thu hôm nay')} value={money(d.today.revenue)} sub={t('{0} hóa đơn', [d.today.invoice_count])} />
         <Kpi icon="calendar" label={t('Doanh thu tháng này')} value={money(d.month.revenue)} sub={t('{0} hóa đơn · VAT {1}', [d.month.invoice_count, money(d.month.vat)])} />
         <Kpi icon="up" label={t('Lãi gộp tháng này')} value={money(d.month.gross_profit)} sub={margin ? t('Biên lãi {0}% trên doanh thu chưa VAT', [margin]) : t('Giá vốn {0}', [money(d.month.cost)])} />
         <Kpi icon="package" label={t('Sản phẩm đang bán')} value={num(d.product_count)} sub={t('{0} khách hàng', [num(d.customer_count)])} />
-        <Kpi icon="alert" color={d.low_stock.length ? 'yellow' : ''} label={t('Cần nhập hàng')} value={num(d.low_stock.length)} sub={t('sản phẩm dưới mức tối thiểu')} />
+        <Kpi icon="alert" color={d.low_stock.length ? 'yellow' : ''} label={t('Cần nhập hàng')} value={num(d.low_stock.length)}
+          sub={branch === 'all' ? t('sản phẩm dưới mức tối thiểu (tính từng chi nhánh)') : t('sản phẩm dưới mức tối thiểu')} />
       </div>
 
       {(d.pending_payment > 0 || d.cancel_requests > 0) && (
@@ -46,6 +51,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      <BranchRevenue rows={d.by_branch_month} title={t('Doanh thu tháng này theo chi nhánh')} />
 
       <div className="card">
         <div className="card-head"><h2><Icon name="chart" />{t('Doanh thu 30 ngày gần nhất')}</h2><Link className="btn sm" to="/reports">{t('Xem báo cáo')}</Link></div>
@@ -71,7 +78,7 @@ export default function Dashboard() {
             <div className="table-wrap"><table>
               <thead><tr><th>{t('Sản phẩm')}</th><th className="right">{t('Tồn / tối thiểu')}</th></tr></thead>
               <tbody>{d.low_stock.map((p) => (
-                <tr key={p.code}><td><ProductCell p={p} /></td>
+                <tr key={`${p.code}-${p.branch_id ?? ''}`}><td><ProductCell p={p} />{p.branch_name && <div className="muted small">{p.branch_name}</div>}</td>
                   <td className="right">{p.stock <= 0 ? <span className="badge red">{t('Hết hàng')}</span> : <span className="badge yellow">{t('Còn {0}', [p.stock])}</span>} <span className="muted">/ {p.min_stock}</span></td></tr>
               ))}</tbody>
             </table></div>

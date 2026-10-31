@@ -85,12 +85,14 @@ class UserOut(ORM):
     last_login_at: datetime | None = None
     branch_id: int | None = None
     branch_name: str | None = None
+    branch_is_main: bool = False  # chủ cửa hàng chi nhánh chính: xem được số liệu mọi chi nhánh
 
 
 class BranchIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     address: str | None = Field(None, max_length=255)
     is_active: bool = True
+    is_main: bool = False  # đặt làm chi nhánh chính (nơi tổng hợp số liệu mọi chi nhánh)
 
     @field_validator("name")
     @classmethod

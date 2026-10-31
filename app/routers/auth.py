@@ -553,14 +553,23 @@ def _branch_out(db: Session, b: Branch) -> dict:
                             .group_by(User.role)).all())
     actions = db.scalar(select(func.count(AuditLog.id)).where(
         AuditLog.branch_id == b.id, AuditLog.created_at >= now() - timedelta(days=30))) or 0
-    return {"id": b.id, "name": b.name, "address": b.address, "is_active": b.is_active,
+    return {"id": b.id, "name": b.name, "address": b.address, "is_active": b.is_active, "is_main": b.is_main,
             "owner_count": roles.get("owner", 0), "staff_count": roles.get("staff", 0),
             "user_count": sum(roles.values()), "actions_30d": actions}
 
 
 @router.get("/branches")
 def list_branches(db: Session = Depends(get_db), _: User = Depends(ADMIN_ONLY)):
-    return [_branch_out(db, b) for b in db.scalars(select(Branch).order_by(Branch.id))]
+    return [_branch_out(db, b) for b in db.scalars(select(Branch).order_by(Branch.is_main.desc(), Branch.id))]
+
+
+@router.get("/branches/options")
+def branch_options(db: Session = Depends(get_db), user: User = Depends(ADMIN_OR_OWNER)):
+    """Danh sách chi nhánh cho ô chọn "Xem số liệu" của chủ cửa hàng chi nhánh chính."""
+    if user.role == "owner" and not user.branch_is_main:
+        raise HTTPException(403, "Chỉ chủ cửa hàng của chi nhánh chính được xem số liệu các chi nhánh khác")
+    return [{"id": b.id, "name": b.name, "is_main": b.is_main, "is_active": b.is_active}
+            for b in db.scalars(select(Branch).order_by(Branch.is_main.desc(), Branch.id))]
 
 
 @router.get("/branches/{branch_id}")
@@ -579,13 +588,30 @@ def _check_branch_name(db: Session, name: str, branch_id: int | None = None) -> 
         raise HTTPException(400, "Tên chi nhánh đã tồn tại")
 
 
+def _set_main(db: Session, b: Branch, data: BranchIn) -> None:
+    """Chỉ có một chi nhánh chính. Đặt chi nhánh khác làm chính thì chi nhánh chính cũ thành chi nhánh thường;
+    muốn bỏ chi nhánh chính thì chọn chi nhánh khác làm chính."""
+    if b.is_main and not data.is_active:
+        raise HTTPException(400, "Không thể ngừng hoạt động chi nhánh chính. Hãy chọn chi nhánh khác làm chi nhánh chính trước")
+    if b.is_main and not data.is_main:
+        raise HTTPException(400, "Phải luôn có một chi nhánh chính. Hãy chọn chi nhánh khác làm chi nhánh chính")
+    if data.is_main and not b.is_main:
+        if not data.is_active:
+            raise HTTPException(400, "Chi nhánh chính phải đang hoạt động")
+        db.execute(update(Branch).where(Branch.is_main.is_(True)).values(is_main=False))
+        b.is_main = True
+
+
 @router.post("/branches", status_code=201)
 def create_branch(data: BranchIn, db: Session = Depends(get_db), admin: User = Depends(ADMIN_ONLY)):
     _check_branch_name(db, data.name)
-    b = Branch(name=data.name, address=(data.address or "").strip() or None, is_active=data.is_active)
+    b = Branch(name=data.name, address=(data.address or "").strip() or None, is_active=data.is_active, is_main=False)
+    first = db.scalar(select(Branch.id).where(Branch.is_main.is_(True)).limit(1)) is None
+    _set_main(db, b, data.model_copy(update={"is_main": data.is_main or first}))  # chi nhánh đầu tiên là chi nhánh chính
     db.add(b)
     db.flush()
-    audit.log(db, admin, "BRANCH_CREATE", "branches", b.id, new={"name": b.name, "address": b.address})
+    audit.log(db, admin, "BRANCH_CREATE", "branches", b.id,
+              new={"name": b.name, "address": b.address, "is_main": b.is_main})
     db.commit()
     return _branch_out(db, b)
 
@@ -596,9 +622,12 @@ def update_branch(branch_id: int, data: BranchIn, db: Session = Depends(get_db),
     if b is None:
         raise HTTPException(404, "Không tìm thấy chi nhánh")
     _check_branch_name(db, data.name, b.id)
-    before = {"name": b.name, "address": b.address, "is_active": b.is_active}
+    if "is_main" not in data.model_fields_set:  # giao diện / script cũ không gửi is_main: giữ nguyên
+        data = data.model_copy(update={"is_main": b.is_main})
+    before = {"name": b.name, "address": b.address, "is_active": b.is_active, "is_main": b.is_main}
+    _set_main(db, b, data)
     b.name, b.address, b.is_active = data.name, (data.address or "").strip() or None, data.is_active
-    after = {"name": b.name, "address": b.address, "is_active": b.is_active}
+    after = {"name": b.name, "address": b.address, "is_active": b.is_active, "is_main": b.is_main}
     if before != after:
         audit.log(db, admin, "BRANCH_UPDATE", "branches", b.id, old=before, new=after)
     db.commit()

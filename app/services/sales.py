@@ -306,7 +306,8 @@ def _release_stock_and_promos(db: Session, inv: Invoice, user: User | None, move
     for it in inv.items:
         qty = it.quantity - it.returned_qty
         if qty > 0:
-            change_stock(db, products[it.product_id], qty, move_type, inv.code, user)
+            # Hoàn về kho chi nhánh lập hóa đơn (vòng nền hủy hóa đơn quá hạn chạy không theo chi nhánh)
+            change_stock(db, products[it.product_id], qty, move_type, inv.code, user, branch_id=inv.branch_id)
         if it.serial_id:
             serial = db.get(ProductSerial, it.serial_id)
             if serial is not None and serial.status == "sold":

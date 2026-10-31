@@ -7,15 +7,16 @@ import Icon from '../ui/Icon.jsx'
 import { Empty, ErrorBox, Loading, useLoad } from '../ui/kit.jsx'
 import ProductCell from '../ui/ProductCell.jsx'
 import RangePicker from '../ui/RangePicker.jsx'
+import { BranchPicker, BranchRevenue, useBranchView } from '../ui/BranchView.jsx'
 import { Kpi } from './Dashboard.jsx'
 import { t } from '../i18n.js'
 
 const dm = (s) => `${s.slice(8)}/${s.slice(5, 7)}`
 
-function MonthlyCard() {
+function MonthlyCard({ branch }) {
   const year = new Date().getFullYear()
   const [y, setY] = useState(year)
-  const { data, error } = useLoad(() => api.get('/reports/monthly', { year: y }), [y])
+  const { data, error } = useLoad(() => api.get('/reports/monthly', { year: y, branch }), [y, branch])
   const build = useMemo(() => data && seriesChart('bar', data.map((m) => `Th ${Number(m.month.slice(5))}`), data.map((m) => m.revenue)), [data])
   const total = (data || []).reduce((s, m) => s + m.revenue, 0)
   return (
@@ -44,14 +45,16 @@ function ProductTable({ rows, cols }) {
 
 export default function Reports() {
   const [range, setRange] = useState({ date_from: daysAgo(29), date_to: today() })
-  const { data: d, loading, error } = useLoad(() => api.get('/reports/revenue', range), [range.date_from, range.date_to])
+  const [branch, setBranch, multi] = useBranchView()
+  const { data: d, loading, error } = useLoad(() => api.get('/reports/revenue', { ...range, branch }), [range.date_from, range.date_to, branch])
   const dayChart = useMemo(() => d && seriesChart('bar', d.by_day.map((x) => dm(x.date)), d.by_day.map((x) => x.revenue)), [d])
   const catChart = useMemo(() => d && shareChart(d.by_category), [d])
-  const exportFile = (format) => openFile('/reports/export/revenue', { ...range, format }, `bao-cao-doanh-thu-${range.date_from}-${range.date_to}.${format}`)
+  const exportFile = (format) => openFile('/reports/export/revenue', { ...range, branch, format }, `bao-cao-doanh-thu-${range.date_from}-${range.date_to}.${format}`)
   const s = d?.summary
   return (
     <div className="stack">
       <div className="card">
+        {multi && <div className="toolbar"><BranchPicker value={branch} onChange={setBranch} /></div>}
         <RangePicker value={range} onChange={setRange} busy={loading}>
           <div className="btn-group">
             <button type="button" className="btn" onClick={() => exportFile('xlsx')}><Icon name="download" />Excel</button>
@@ -70,6 +73,7 @@ export default function Reports() {
           <Kpi icon="up" label={t('Lãi gộp')} value={money(s.gross_profit)}
             sub={s.revenue_net ? t('Biên lãi {0}%', [((s.gross_profit / s.revenue_net) * 100).toFixed(1)]) : ''} />
         </div>
+        <BranchRevenue rows={d.by_branch} />
         <div className="grid two">
           <div className="card"><div className="card-head"><h2><Icon name="chart" />{t('Doanh thu theo ngày')}</h2></div>
             <Chart build={dayChart} label={t('Doanh thu theo ngày trong kỳ')} /></div>
@@ -83,7 +87,7 @@ export default function Reports() {
             <ProductTable rows={d.slow_products} cols={[[t('SL bán'), (p) => num(p.quantity)], [t('Tồn'), (p) => num(p.stock)]]} /></div>
         </div>
       </>}
-      <MonthlyCard />
+      <MonthlyCard branch={branch} />
     </div>
   )
 }

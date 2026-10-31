@@ -86,7 +86,7 @@ def test_connection_is_read_only_even_if_guard_bypassed(db):
             conn.execute("DELETE FROM products")
     db.expire_all()
     assert tts.run_sql(db, "SELECT COUNT(*) FROM v_ai_products").rows[0][0] == 3
-    db.connection().exec_driver_sql("UPDATE products SET stock = stock")  # kết nối thường vẫn ghi được sau đó
+    db.connection().exec_driver_sql("UPDATE products SET min_stock = min_stock")  # kết nối thường vẫn ghi được sau đó
 
 
 # TC-AIQ-05 (SRS 11.3)
